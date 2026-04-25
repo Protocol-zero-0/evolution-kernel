@@ -2,27 +2,33 @@
 
 [English](README.md) | 中文
 
-Evolution Kernel 是一个面向“自主自我进化软件系统”的最小协议与运行时设计。
+**Evolution Kernel** 是一个面向“自主自我进化软件系统”的最小协议与运行时设计。
 
-第一个宿主系统是 Token-Ignition 的后端评估器：一个自主评审系统，目标是在保持实现小、可复现、可沙箱化、可审计的前提下，持续提升识别高潜力 AI-native Builder 的能力。
+它的核心定位是一个**通用的进化引擎**，旨在持续优化**任何**软件项目。它提供了一个标准化的闭环，用于自主地提出、执行和评估代码变更。
 
-当前 v0 包含确定性 governor、基于 Git 的沙箱版本管理、基于文件的角色交接，以及手写的 Token-Ignition golden set。
+## 首个优化对象
+
+虽然 Evolution Kernel 被设计为通用的，但它优化的第一个目标系统是 **Token-Ignition**（具体为其后端评估器）。Token-Ignition 作为首个用例，用于验证该内核安全、确定性地进化代码库的能力。
+
+## 目前做到了什么 (v0 现状)
+
+当前的 v0 版本实现了基础的运行时能力：
+- **确定性 Governor**：编排进化循环，管理账本（ledger），并处理实验的晋升与回滚。
+- **基于 Git 的沙箱版本管理**：使用 Git worktree 隔离实验，在明确接受前不会影响主仓库。
+- **基于文件的角色交接**：通过隔离的命令（`planner`、`executor`、`evaluator`）和 JSON 文件（`plan.json`、`evaluation.json`）实现清晰的职责分离。
+- **Token-Ignition 适配器**：一个极简的适配器，包含手写的黄金测试集（golden set），用于评估 Token-Ignition 系统的进化结果。
+
+## 下一步需要做什么 (Roadmap)
+
+- [ ] **LLM 接入**：实现真正基于大语言模型的 Planner 和 Executor（目前测试中使用的是 mock 脚本）。
+- [ ] **强化沙箱隔离**：为 `executor` 和 `evaluator` 提供超越 Git worktree 的更强隔离机制（如 Docker/容器化执行）。
+- [ ] **更多项目适配器**：扩展 Token-Ignition 之外的用例，支持优化更多类型的项目和工作流。
+- [ ] **高级回滚与分支策略**：支持并行的进化分支和更复杂的合并策略。
 
 ## 文档
 
 - [协议](docs/protocol.md)
 - [Token-Ignition 首个任务](docs/token-ignition-first-task.md)
-
-## V0 运行时
-
-运行时由四个部分组成：
-
-- `governor`: 确定性编排、Git worktree、ledger、晋升与回滚
-- `planner`: 隔离执行，输出 `plan.json`
-- `executor`: 隔离执行，仅修改沙箱 worktree
-- `evaluator`: 隔离执行，输出 `evaluation.json`
-
-晋升不会移动目标仓库的 main 分支，而是将本地 `evolution/accepted` 分支指向候选提交。被拒绝的实验仍保留在 ledger 中，但不会推进 `evolution/accepted`。
 
 ## 运行测试
 
@@ -50,12 +56,3 @@ python3 -m evolution_kernel.cli \
 --output <json>
 --worktree <sandbox path>
 ```
-
-## Token-Ignition 适配器
-
-第一个适配器刻意保持极简：
-
-- `adapters/token_ignition/golden_cases.json`
-- `adapters/token_ignition/evaluate_golden_cases.py`
-
-它定义了 6 类对抗样例，用于评估器进化：强但极简的进化、仅提示词包装、不可复现的 Demo、过度复杂的 swarm、真实但偏弱的系统、对基准过拟合。

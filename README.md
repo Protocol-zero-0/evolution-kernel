@@ -2,27 +2,33 @@
 
 English | [中文](README.zh.md)
 
-Evolution Kernel is a minimal protocol and runtime design for autonomous self-evolving software systems.
+**Evolution Kernel** is a minimal protocol and runtime design for autonomous, self-evolving software systems.
 
-The first host system is Token-Ignition's backend evaluator: an autonomous review system that should improve its ability to identify high-potential AI-native builders while keeping the implementation small, reproducible, sandboxed, and auditable.
+Its core positioning is a **general-purpose evolution engine** capable of optimizing **any** software project. It provides a standardized loop for proposing, executing, and evaluating code changes autonomously.
 
-The current v0 includes a deterministic governor, Git-backed sandbox versioning, file-based role handoff, and a hand-written Token-Ignition golden set.
+## First Optimization Target
+
+While designed to be universal, the first system being optimized by Evolution Kernel is **Token-Ignition** (specifically its backend evaluator). Token-Ignition serves as the first use case to prove the kernel's ability to safely and deterministically evolve a codebase.
+
+## Current Status (v0)
+
+The current v0 implementation provides the foundational runtime:
+- **Deterministic Governor**: Orchestrates the evolution loop, manages the ledger, and handles promotion/rollback of experiments.
+- **Git-backed Sandbox Versioning**: Uses Git worktrees to isolate experiments without affecting the main repository until explicitly accepted.
+- **File-based Role Handoff**: Clean separation of concerns via isolated commands (`planner`, `executor`, `evaluator`) communicating via JSON files (`plan.json`, `evaluation.json`).
+- **Token-Ignition Adapter**: A minimal adapter with a hand-written golden set to evaluate the evolution of the Token-Ignition system.
+
+## Next Steps (Roadmap)
+
+- [ ] **LLM Integration**: Implement actual LLM-driven Planners and Executors (currently using mock/fixture scripts for testing).
+- [ ] **Enhanced Sandboxing**: Stronger isolation for the `executor` and `evaluator` beyond Git worktrees (e.g., Docker/containerized execution).
+- [ ] **More Adapters**: Expand beyond Token-Ignition to optimize other types of projects and workflows.
+- [ ] **Advanced Rollback & Branching**: Support for parallel evolution branches and more complex merge strategies.
 
 ## Documents
 
 - [Protocol](docs/protocol.md)
 - [Token-Ignition First Task](docs/token-ignition-first-task.md)
-
-## V0 Runtime
-
-The runtime has four parts:
-
-- `governor`: deterministic orchestration, Git worktrees, ledger, promotion, rollback
-- `planner`: isolated command that writes `plan.json`
-- `executor`: isolated command that mutates only the sandbox worktree
-- `evaluator`: isolated command that writes `evaluation.json`
-
-Promotion does not move the target repository's main branch. It moves the local `evolution/accepted` branch to the candidate commit. Rejected experiments keep their ledger records but do not advance `evolution/accepted`.
 
 ## Run Tests
 
@@ -50,12 +56,3 @@ Each role command receives:
 --output <json>
 --worktree <sandbox path>
 ```
-
-## Token-Ignition Adapter
-
-The first adapter is intentionally small:
-
-- `adapters/token_ignition/golden_cases.json`
-- `adapters/token_ignition/evaluate_golden_cases.py`
-
-It defines six adversarial cases for evaluator evolution: strong minimal evolution, prompt-only wrapper, non-reproducible demo, over-complex swarm, real-but-weak system, and benchmark overfit.
