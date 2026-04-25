@@ -1,0 +1,95 @@
+[
+  {
+    "id": "strong-minimal-evolution",
+    "expected": "accept",
+    "description": "Small system with goal config, versioned iterations, metrics, rollback, and reproducible micro-run.",
+    "signals": {
+      "goal_config": true,
+      "iteration_logs": 3,
+      "versioned_commits": true,
+      "measurable_improvement": true,
+      "rollback_recorded": true,
+      "reproducible_micro_run": true,
+      "artifact_hash": true,
+      "prompt_only": false
+    }
+  },
+  {
+    "id": "prompt-only-wrapper",
+    "expected": "reject",
+    "description": "Polished autonomous-agent language but only prompt wording changes and no independent evaluator.",
+    "signals": {
+      "goal_config": false,
+      "iteration_logs": 0,
+      "versioned_commits": false,
+      "measurable_improvement": false,
+      "rollback_recorded": false,
+      "reproducible_micro_run": false,
+      "artifact_hash": false,
+      "prompt_only": true
+    }
+  },
+  {
+    "id": "non-reproducible-demo",
+    "expected": "reject",
+    "description": "Has a webpage or video but no runnable micro-run, fixed input, output hash, or test command.",
+    "signals": {
+      "goal_config": true,
+      "iteration_logs": 1,
+      "versioned_commits": false,
+      "measurable_improvement": false,
+      "rollback_recorded": false,
+      "reproducible_micro_run": false,
+      "artifact_hash": false,
+      "prompt_only": false
+    }
+  },
+  {
+    "id": "over-complex-agent-swarm",
+    "expected": "reject",
+    "description": "Many tools and agents but unclear authority boundaries, no deterministic governor, and no rollback.",
+    "signals": {
+      "goal_config": true,
+      "iteration_logs": 2,
+      "versioned_commits": true,
+      "measurable_improvement": false,
+      "rollback_recorded": false,
+      "reproducible_micro_run": true,
+      "artifact_hash": true,
+      "prompt_only": false,
+      "complexity_level": "high"
+    }
+  },
+  {
+    "id": "real-but-weak-system",
+    "expected": "conditional",
+    "description": "Real versioned iterations and partial metrics, but one audit trail gap.",
+    "signals": {
+      "goal_config": true,
+      "iteration_logs": 2,
+      "versioned_commits": true,
+      "measurable_improvement": true,
+      "rollback_recorded": false,
+      "reproducible_micro_run": true,
+      "artifact_hash": true,
+      "prompt_only": false
+    }
+  },
+  {
+    "id": "benchmark-overfit-submission",
+    "expected": "reject",
+    "description": "Passes public examples by hardcoding outputs, without a general evolution loop.",
+    "signals": {
+      "goal_config": true,
+      "iteration_logs": 1,
+      "versioned_commits": true,
+      "measurable_improvement": true,
+      "rollback_recorded": false,
+      "reproducible_micro_run": true,
+      "artifact_hash": true,
+      "prompt_only": false,
+      "hardcoded_benchmark": true
+    }
+  }
+]
+
