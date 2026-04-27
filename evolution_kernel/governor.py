@@ -117,12 +117,19 @@ class Governor:
                 worktree,
             )
 
-            patch = self._git_in(worktree, "diff", "--binary")
-            (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
             candidate_commit = self._commit_candidate(worktree, run_id)
             (run_dir / "candidate_commit.txt").write_text(
                 (candidate_commit or "") + "\n", encoding="utf-8"
             )
+            # Patch must be captured against the actual candidate commit, not the
+            # working tree before commit (untracked files would be invisible).
+            if candidate_commit:
+                patch = self._git_in(
+                    worktree, "diff", "--binary", baseline_commit, candidate_commit
+                )
+            else:
+                patch = ""
+            (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
 
             scope_report = self._enforce_scope(worktree, baseline_commit, candidate_commit)
             if scope_report is not None and not scope_report.ok:
@@ -228,7 +235,14 @@ class Governor:
         if not self._git_in(worktree, "status", "--porcelain").strip():
             return None
         self._git_in(worktree, "add", "-A")
-        self._git_in(worktree, "commit", "-m", f"evolution experiment {run_id}")
+        # Inject identity so commit succeeds even when target repo has no
+        # global git user.email / user.name configured.
+        self._git_in(
+            worktree,
+            "-c", "user.email=evolution@kernel.local",
+            "-c", "user.name=evolution-kernel",
+            "commit", "-m", f"evolution experiment {run_id}",
+        )
         return self._git_in(worktree, "rev-parse", "HEAD")
 
     def _run_role(self, role: RoleCommand, input_path: Path, output_path: Path, worktree: Path) -> None:

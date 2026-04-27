@@ -125,31 +125,75 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn("hello-observer", observation["sources"][1]["stdout"])
 
     # ------- 5. hard stops block then reset re-enables -------------------------
-    def test_hard_stop_blocks_then_reset_allows(self):
-        max_iterations = 5
-        max_failures = 2
-        state = hard_stops.load_state(self.ledger)
-        # two consecutive failures
-        for _ in range(2):
-            state = hard_stops.record_outcome(
-                state, accepted=False,
-                max_iterations=max_iterations, max_consecutive_failures=max_failures,
+    def test_hard_stop_blocks_then_reset_allows_via_cli(self):
+        """End-to-end: drive the real CLI so the persistent state path is exercised.
+
+        Plan: a config with max_consecutive_failures=1 + a rejecting evaluator
+        means run #1 runs, run #2 must be halted. After --reset, run #3 runs
+        again. Every step asserts CLI exit code + stdout shape.
+        """
+        # Build a minimal config that points the rejecting evaluator at our repo.
+        cfg_path = self.base / "evolution.yml"
+        cfg_path.write_text(
+            "mission: hard-stop e2e\n"
+            "evidence_sources:\n"
+            "  - type: shell\n"
+            "    command: \"echo hs\"\n"
+            "mutation_scope:\n"
+            "  allowed_paths: []\n"  # no mutations are allowed -> always reject
+            "hard_stops:\n"
+            "  max_iterations: 10\n"
+            "  max_consecutive_failures: 1\n"
+            f"roles:\n"
+            f"  planner:   [\"{sys.executable}\", \"{FIXTURES / 'planner.py'}\"]\n"
+            f"  executor:  [\"{sys.executable}\", \"{FIXTURES / 'executor.py'}\"]\n"
+            f"  evaluator: [\"{sys.executable}\", \"{FIXTURES / 'evaluator_reject.py'}\"]\n",
+            encoding="utf-8",
+        )
+
+        def _cli(*extra: str) -> subprocess.CompletedProcess:
+            return subprocess.run(
+                [sys.executable, "-m", "evolution_kernel.cli", *extra],
+                cwd=ROOT, text=True, capture_output=True, check=False,
             )
-        hard_stops.save_state(self.ledger, state)
 
-        allowed, reason = hard_stops.precheck(
-            hard_stops.load_state(self.ledger), max_iterations, max_failures,
+        # Run #1: should run, return rejection (executor produces no changes
+        # because allowed_paths is empty + evaluator_reject also rejects).
+        r1 = _cli(
+            "--config", str(cfg_path),
+            "--repo", str(self.repo),
+            "--ledger", str(self.ledger),
+            "--run-id", "0001",
         )
-        self.assertFalse(allowed)
-        self.assertIn("max_consecutive_failures", reason)
+        self.assertEqual(r1.returncode, 0, f"run1 unexpected exit: {r1.stderr}")
 
-        cleared = hard_stops.reset(self.ledger)
-        self.assertTrue(cleared)
-
-        allowed_again, _ = hard_stops.precheck(
-            hard_stops.load_state(self.ledger), max_iterations, max_failures,
+        # Run #2: should be halted by max_consecutive_failures=1.
+        r2 = _cli(
+            "--config", str(cfg_path),
+            "--repo", str(self.repo),
+            "--ledger", str(self.ledger),
+            "--run-id", "0002",
         )
-        self.assertTrue(allowed_again)
+        self.assertEqual(r2.returncode, 3, f"run2 was not halted: {r2.stdout}")
+        out2 = json.loads(r2.stdout)
+        self.assertTrue(out2["halted"])
+        self.assertIn("max_consecutive_failures", out2["reason"])
+        # Halt event must be recorded in the ledger so it can be reviewed later.
+        halted_files = list((self.ledger / "halted").glob("*.json"))
+        self.assertGreaterEqual(len(halted_files), 1, "halted ledger entry missing")
+
+        # Reset clears the state and run #3 runs again.
+        r_reset = _cli("--reset", "--ledger", str(self.ledger))
+        self.assertEqual(r_reset.returncode, 0)
+        self.assertTrue(json.loads(r_reset.stdout)["reset"])
+
+        r3 = _cli(
+            "--config", str(cfg_path),
+            "--repo", str(self.repo),
+            "--ledger", str(self.ledger),
+            "--run-id", "0003",
+        )
+        self.assertEqual(r3.returncode, 0, f"run3 was not allowed after reset: {r3.stdout}")
 
     # ------- 6. ledger contains every required artifact -----------------------
     def test_ledger_contains_all_required_artifacts(self):
@@ -179,6 +223,12 @@ class AcceptanceTests(unittest.TestCase):
 
         commit = (run_dir / "candidate_commit.txt").read_text(encoding="utf-8").strip()
         self.assertTrue(commit, "candidate_commit.txt is empty")
+
+        # patch.diff must actually contain the mutation. A 0-byte file would
+        # mean the ledger is technically present but useless for replay.
+        patch = (run_dir / "patch.diff").read_text(encoding="utf-8")
+        self.assertTrue(patch.strip(), "patch.diff is empty")
+        self.assertIn("EVOLUTION_MARKER.txt", patch)
 
 
 if __name__ == "__main__":

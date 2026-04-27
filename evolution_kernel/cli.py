@@ -1,12 +1,18 @@
 """Evolution Kernel command-line entry point.
 
-Two subcommands:
+The CLI shape mirrors the suggested form in the project's MVP brief:
 
-* ``run`` executes one experiment. The full MVP loop (observer + scope +
-  hard-stops) is enabled by passing ``--config evolution.yml``. The legacy
-  ``--goal goal.json`` form is preserved so the original role-fixture tests
-  keep working without any extra plumbing.
-* ``reset`` clears the persisted hard-stop state for a ledger.
+    python -m evolution_kernel.cli \
+        --config examples/evolution.yml \
+        --repo /path/to/target-repo \
+        --ledger /tmp/evolution-ledger
+
+Two extra modes are supported alongside this primary form:
+
+* ``--goal goal.json`` runs the legacy direct-flags loop (no observer / scope /
+  hard-stops) so the original golden-case tests keep working unchanged.
+* ``--reset`` clears the persisted hard-stop state for the given ledger and
+  exits — used to re-enable a halted loop after a human review.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
@@ -27,26 +34,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="evolution-kernel",
         description="Run one Evolution Kernel experiment under MVP constraints.",
     )
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    run_p = sub.add_parser("run", help="Run one experiment")
-    run_p.add_argument("--repo", required=True, help="Target git repository")
-    run_p.add_argument("--ledger", required=True, help="Ledger directory")
-    mode = run_p.add_mutually_exclusive_group(required=True)
+    parser.add_argument("--repo", help="Target git repository (required unless --reset)")
+    parser.add_argument("--ledger", required=True, help="Ledger directory")
+    mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--config", dest="config_path", help="Path to evolution.yml")
     mode.add_argument("--goal", help="Path to legacy goal JSON (no observer/scope/hard-stops)")
-    run_p.add_argument("--planner", nargs="+", help="Planner argv (overrides config.roles.planner)")
-    run_p.add_argument("--executor", nargs="+", help="Executor argv (overrides config.roles.executor)")
-    run_p.add_argument("--evaluator", nargs="+", help="Evaluator argv (overrides config.roles.evaluator)")
-    run_p.add_argument("--run-id", default=None)
-
-    reset_p = sub.add_parser("reset", help="Clear persistent hard-stop state for a ledger")
-    reset_p.add_argument("--ledger", required=True)
+    parser.add_argument("--planner", nargs="+", help="Planner argv (overrides config.roles.planner)")
+    parser.add_argument("--executor", nargs="+", help="Executor argv (overrides config.roles.executor)")
+    parser.add_argument("--evaluator", nargs="+", help="Evaluator argv (overrides config.roles.evaluator)")
+    parser.add_argument("--run-id", default=None)
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Clear the persisted hard-stop state for --ledger and exit.",
+    )
 
     args = parser.parse_args(argv)
-    if args.cmd == "reset":
+
+    if args.reset:
         return _cmd_reset(args)
-    return _cmd_run(args)
+
+    if not args.repo:
+        parser.error("--repo is required (unless --reset is given)")
+    if not (args.config_path or args.goal):
+        parser.error("either --config or --goal must be provided")
+
+    if args.config_path:
+        cfg = load_config(args.config_path)
+        return _run_with_config(args, cfg)
+    return _run_legacy(args)
 
 
 def _cmd_reset(args: argparse.Namespace) -> int:
@@ -57,13 +73,6 @@ def _cmd_reset(args: argparse.Namespace) -> int:
         sort_keys=True,
     ))
     return 0
-
-
-def _cmd_run(args: argparse.Namespace) -> int:
-    if args.config_path:
-        cfg = load_config(args.config_path)
-        return _run_with_config(args, cfg)
-    return _run_legacy(args)
 
 
 def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
@@ -84,6 +93,9 @@ def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
         cfg.hard_stops.max_consecutive_failures,
     )
     if not allowed:
+        # Even when blocked, leave an audit record so the ledger covers every
+        # invocation, not just the ones that actually ran the loop.
+        _record_halted(args.ledger, state, why)
         print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
         return 3
 
@@ -128,6 +140,30 @@ def _run_legacy(args: argparse.Namespace) -> int:
     result = governor.run_once(goal, run_id=args.run_id)
     _print_result(result)
     return 0
+
+
+def _record_halted(
+    ledger_dir: str,
+    state: hard_stops.HardStopState,
+    reason: str | None,
+) -> None:
+    halted_dir = Path(ledger_dir) / "halted"
+    halted_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    record = {
+        "halted_at": ts,
+        "reason": reason,
+        "iterations": state.iterations,
+        "consecutive_failures": state.consecutive_failures,
+    }
+    # Suffix with sequence number to avoid collisions within the same second.
+    base = halted_dir / f"{ts}.json"
+    target = base
+    n = 1
+    while target.exists():
+        target = halted_dir / f"{ts}-{n}.json"
+        n += 1
+    target.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _print_result(result, *, halted: bool = False, halt_reason: str | None = None) -> None:

@@ -7,6 +7,7 @@ so a triggered hard stop survives process restarts. ``reset`` clears the state.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Mapping
@@ -55,7 +56,11 @@ def load_state(ledger_dir: Path | str) -> HardStopState:
 def save_state(ledger_dir: Path | str, state: HardStopState) -> None:
     p = state_path(ledger_dir)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    # Atomic write: a crash mid-write must not leave a truncated file that
+    # silently resets the circuit breaker on the next load.
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, p)
 
 
 def precheck(state: HardStopState, max_iterations: int, max_consecutive_failures: int) -> tuple[bool, str | None]:

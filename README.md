@@ -101,10 +101,19 @@ python3 adapters/token_ignition/evaluate_golden_cases.py
 
 ## CLI Shape
 
+YAML-config mode (the primary MVP entry point — observer + scope + hard stops):
+
+```bash
+python3 -m evolution_kernel.cli \
+  --config /path/to/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /path/to/evolution-ledger
+```
+
 Legacy direct-flags mode (still supported for the original golden-case tests):
 
 ```bash
-python3 -m evolution_kernel.cli run \
+python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
   --ledger /path/to/evolution-ledger \
   --goal /path/to/goal.json \
@@ -113,13 +122,10 @@ python3 -m evolution_kernel.cli run \
   --evaluator python3 /path/to/evaluator.py
 ```
 
-YAML-config mode (new in this MVP — observer + scope + hard stops):
+Reset the persistent hard-stop state (after a halt) without running a loop:
 
 ```bash
-python3 -m evolution_kernel.cli run \
-  --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --config /path/to/evolution.yml
+python3 -m evolution_kernel.cli --reset --ledger /path/to/evolution-ledger
 ```
 
 Each role command receives:
@@ -144,7 +150,7 @@ evidence_sources:
   - type: file
     path: metrics.json
   - type: shell
-    cmd: ["bash", "scripts/status.sh"]
+    command: "bash scripts/status.sh"
 
 mutation_scope:
   allowed_paths:
@@ -172,16 +178,16 @@ loop halts even across CLI invocations.
 # one-time: prepare a target repo
 bash examples/demo_target/setup.sh
 
-python3 -m evolution_kernel.cli run \
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
   --repo  examples/demo_target \
-  --ledger /tmp/ek-ledger \
-  --config examples/evolution.yml
+  --ledger /tmp/ek-ledger
 ```
 
 Reset the persistent hard-stop counters when you want to start fresh:
 
 ```bash
-python3 -m evolution_kernel.cli reset --ledger /tmp/ek-ledger
+python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-ledger
 ```
 
 ### 3. Inspect the ledger

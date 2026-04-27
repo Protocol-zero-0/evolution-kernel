@@ -40,7 +40,6 @@ class CliTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "evolution_kernel.cli",
-                    "run",
                     "--repo",
                     str(repo),
                     "--ledger",
