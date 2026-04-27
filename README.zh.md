@@ -101,6 +101,17 @@ python3 adapters/token_ignition/evaluate_golden_cases.py
 
 ## CLI 形状
 
+YAML 配置模式（MVP 主入口 — 包含 observer + scope + hard stops）：
+
+```bash
+python3 -m evolution_kernel.cli \
+  --config /path/to/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /path/to/evolution-ledger
+```
+
+旧版直接传参模式（保留以兼容原始的 golden-case 测试）：
+
 ```bash
 python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
@@ -111,6 +122,12 @@ python3 -m evolution_kernel.cli \
   --evaluator python3 /path/to/evaluator.py
 ```
 
+熔断后清空持久化的 hard-stop 状态（不会触发一次 run）：
+
+```bash
+python3 -m evolution_kernel.cli --reset --ledger /path/to/evolution-ledger
+```
+
 每个角色命令都会收到：
 
 ```text
@@ -118,3 +135,106 @@ python3 -m evolution_kernel.cli \
 --output <json>
 --worktree <sandbox path>
 ```
+
+## MVP 使用方式（observer + scope + hard stops 闭环）
+
+本 MVP 串起协议描述的完整闭环：
+`config -> observe -> plan/execute -> evaluate -> accept/reject -> ledger`。
+
+### 1. 编写 `evolution.yml`
+
+```yaml
+mission: "Add a minimal in-scope mutation so the evaluator accepts."
+
+evidence_sources:
+  - type: file
+    path: metrics.json
+  - type: shell
+    command: "bash scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:   ["python3", "bots/planner.py"]
+  executor:  ["python3", "bots/executor.py"]
+  evaluator: ["python3", "bots/evaluator.py"]
+```
+
+`evidence_sources` 在 planner 运行前被读入 `observation.json`。
+`mutation_scope.allowed_paths` 在 executor 提交后被强制校验 —— 范围之外
+的任何改动都会被自动 reject，`decision.reason` 写为 `scope_violation: ...`。
+`hard_stops` 通过 `<ledger>/.evolution_state.json` 跨 run 持久化，循环卡死
+时即使重启 CLI 也会被拦截。
+
+### 2. 跑一次实验
+
+```bash
+# 一次性：安装包（PyYAML 是唯一运行时依赖，已在 pyproject.toml 声明）
+python3 -m pip install -e .
+
+# 一次性：准备目标仓库
+bash examples/demo_target/setup.sh
+
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
+  --repo  examples/demo_target \
+  --ledger /tmp/ek-ledger
+```
+
+> 上面 `pip install -e .` 每个环境只需要做一次。之后那三行 CLI 命令是
+> 干净 checkout 下可复现的。
+
+需要重置熔断器从头来过：
+
+```bash
+python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-ledger
+```
+
+### 3. 检查 ledger
+
+每一次 run 都会在 `<ledger>/runs/<run_id>/` 下产出完整的证据链：
+
+```text
+goal.json              # 仅 legacy 模式
+config.json            # 完整 YAML 配置快照（full 模式）
+observation.json       # planning 之前 observer 收集到的证据
+plan.json              # planner 输出
+patch.diff             # baseline 与 candidate commit 之间的 diff
+candidate_commit.txt   # sandbox 中 candidate commit 的 hash
+evaluation.json        # evaluator 输出（scope_violation 时由 Governor 合成）
+decision.json          # accept / reject + 原因
+reflection.json        # 决策后的总结
+```
+
+### 4. 验收标准 → 测试映射
+
+issue #1 中六条验收标准在 `tests/test_acceptance.py` 中各对应一个测试：
+
+| # | 验收要求 | 测试 |
+| - | --- | --- |
+| 1 | accept 推进 `evolution/accepted` | `test_accept_advances_accepted_branch` |
+| 2 | reject 不推进 | `test_reject_does_not_advance_accepted_branch` |
+| 3 | 强制 mutation scope + 记录违规 | `test_scope_violation_is_rejected_and_logged` |
+| 4 | observer 写出 `observation.json`（file + shell） | `test_observer_writes_observation_with_file_and_shell` |
+| 5 | hard stops 触发熔断后 `--reset` 恢复 | `test_hard_stop_blocks_then_reset_allows_via_cli` |
+| 6 | ledger 包含全部必需 artifact | `test_ledger_contains_all_required_artifacts` |
+
+此外 `tests/test_scope.py` 单独钉死了 `allowed_paths` matcher 的边界语义
+（递归 / 精确匹配 / 兄弟名碰撞 / `..` 逃逸 / 空作用域 等）。
+
+### 本 MVP 有意**不做**的内容
+
+按照 issue 的“不要做”清单：
+
+- 不做 LLM / agent-swarm / dashboard。
+- 不做 PR router，不做自动 merge 到上游 `main`。
+- 不做多目标适配器框架 —— 唯一示例目标是 `examples/demo_target/`。
+- 不做超出 git worktree 的容器/进程级沙箱。
+
+这些都是在内核本身被信任之后才适合做的下一步。
