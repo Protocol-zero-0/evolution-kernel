@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Configure git identity
+        # `_commit_candidate` injects per-commit identity, but a couple of
+        # tests still call `git commit` against a fresh tempdir directly.
+        run: |
+          git config --global user.email "ci@evolution-kernel.local"
+          git config --global user.name  "evolution-kernel-ci"
+
+      - name: Install package (PyYAML is the only runtime dep)
+        run: python -m pip install -e .
+
+      - name: Run unit + acceptance + scope tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run token-ignition golden cases
+        run: python adapters/token_ignition/evaluate_golden_cases.py

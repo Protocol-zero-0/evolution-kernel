@@ -8,6 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .config import EvidenceSource
+from .observer import collect_observation, write_observation
+from .scope import ScopeReport, check_scope
+
 
 ACCEPTED_BRANCH = "evolution/accepted"
 
@@ -45,12 +49,18 @@ class Governor:
         planner: RoleCommand,
         executor: RoleCommand,
         evaluator: RoleCommand,
+        evidence_sources: Sequence[EvidenceSource] = (),
+        allowed_paths: Sequence[str] = (),
+        config_snapshot: Mapping[str, Any] | None = None,
     ) -> None:
         self.target_repo = Path(target_repo).resolve()
         self.ledger_dir = Path(ledger_dir).resolve()
         self.planner = planner
         self.executor = executor
         self.evaluator = evaluator
+        self.evidence_sources = tuple(evidence_sources)
+        self.allowed_paths = tuple(allowed_paths)
+        self.config_snapshot = dict(config_snapshot) if config_snapshot else None
 
     def run_once(self, goal: Mapping[str, Any], run_id: str | None = None) -> RunResult:
         self._ensure_git_repo()
@@ -68,6 +78,13 @@ class Governor:
 
         try:
             self._write_json(run_dir / "goal.json", dict(goal))
+            if self.config_snapshot is not None:
+                self._write_json(run_dir / "config.json", self.config_snapshot)
+
+            observation_path = run_dir / "observation.json"
+            observation = collect_observation(self.evidence_sources, self.target_repo)
+            write_observation(observation_path, observation)
+
             self._write_json(
                 run_dir / "planner_input.json",
                 {
@@ -77,6 +94,8 @@ class Governor:
                     "baseline_commit": baseline_commit,
                     "worktree": str(worktree),
                     "ledger_dir": str(self.ledger_dir),
+                    "observation_path": str(observation_path),
+                    "allowed_paths": list(self.allowed_paths),
                 },
             )
             self._run_role(self.planner, run_dir / "planner_input.json", run_dir / "plan.json", worktree)
@@ -98,31 +117,66 @@ class Governor:
                 worktree,
             )
 
-            patch = self._git_in(worktree, "diff", "--binary")
-            (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
             candidate_commit = self._commit_candidate(worktree, run_id)
-
-            self._write_json(
-                run_dir / "evaluator_input.json",
-                {
-                    "run_id": run_id,
-                    "goal": goal,
-                    "baseline_commit": baseline_commit,
-                    "candidate_commit": candidate_commit,
-                    "patch_path": str(run_dir / "patch.diff"),
-                    "worktree": str(worktree),
-                },
+            (run_dir / "candidate_commit.txt").write_text(
+                (candidate_commit or "") + "\n", encoding="utf-8"
             )
-            self._run_role(
-                self.evaluator,
-                run_dir / "evaluator_input.json",
-                run_dir / "evaluation.json",
-                worktree,
-            )
+            # Patch must be captured against the actual candidate commit, not the
+            # working tree before commit (untracked files would be invisible).
+            if candidate_commit:
+                patch = self._git_in(
+                    worktree, "diff", "--binary", baseline_commit, candidate_commit
+                )
+                # `_run` strips trailing whitespace; restore the final newline
+                # `git apply` requires for the patch to be replayable.
+                if patch and not patch.endswith("\n"):
+                    patch += "\n"
+            else:
+                patch = ""
+            (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
 
-            evaluation = self._read_json(run_dir / "evaluation.json")
-            decision = self._decide(evaluation, baseline_commit, candidate_commit)
-            self._write_json(run_dir / "decision.json", decision.__dict__)
+            scope_report = self._enforce_scope(worktree, baseline_commit, candidate_commit)
+            if scope_report is not None and not scope_report.ok:
+                evaluation = {
+                    "hard_gates_passed": False,
+                    "recommendation": "reject",
+                    "reason": "scope_violation",
+                    "violations": list(scope_report.violations),
+                    "changed_files": list(scope_report.changed_files),
+                    "allowed_paths": list(scope_report.allowed_paths),
+                    "metrics": {},
+                }
+                self._write_json(run_dir / "evaluation.json", evaluation)
+                decision = RunDecision(
+                    accepted=False,
+                    reason=f"scope_violation: {','.join(scope_report.violations)}",
+                    baseline_commit=baseline_commit,
+                    candidate_commit=candidate_commit,
+                    rollback_target=baseline_commit,
+                )
+                self._write_json(run_dir / "decision.json", decision.__dict__)
+            else:
+                self._write_json(
+                    run_dir / "evaluator_input.json",
+                    {
+                        "run_id": run_id,
+                        "goal": goal,
+                        "baseline_commit": baseline_commit,
+                        "candidate_commit": candidate_commit,
+                        "patch_path": str(run_dir / "patch.diff"),
+                        "worktree": str(worktree),
+                        "observation_path": str(observation_path),
+                    },
+                )
+                self._run_role(
+                    self.evaluator,
+                    run_dir / "evaluator_input.json",
+                    run_dir / "evaluation.json",
+                    worktree,
+                )
+                evaluation = self._read_json(run_dir / "evaluation.json")
+                decision = self._decide(evaluation, baseline_commit, candidate_commit)
+                self._write_json(run_dir / "decision.json", decision.__dict__)
 
             if decision.accepted:
                 self._git("branch", "-f", ACCEPTED_BRANCH, candidate_commit)
@@ -163,11 +217,36 @@ class Governor:
             return RunDecision(True, "hard gates passed and evaluator recommended promotion", baseline_commit, candidate_commit, baseline_commit)
         return RunDecision(False, "hard gates failed or evaluator rejected candidate", baseline_commit, candidate_commit, baseline_commit)
 
+    def _enforce_scope(
+        self,
+        worktree: Path,
+        baseline_commit: str,
+        candidate_commit: str | None,
+    ) -> ScopeReport | None:
+        """Return a ScopeReport when allowed_paths is configured, else None.
+
+        When no candidate commit was produced, scope is vacuously satisfied.
+        """
+        if not self.allowed_paths:
+            return None
+        if not candidate_commit:
+            return ScopeReport(ok=True, changed_files=(), violations=(), allowed_paths=self.allowed_paths)
+        names_blob = self._git_in(worktree, "diff", "--name-only", baseline_commit, candidate_commit)
+        changed = tuple(line for line in names_blob.splitlines() if line.strip())
+        return check_scope(changed, self.allowed_paths)
+
     def _commit_candidate(self, worktree: Path, run_id: str) -> str | None:
         if not self._git_in(worktree, "status", "--porcelain").strip():
             return None
         self._git_in(worktree, "add", "-A")
-        self._git_in(worktree, "commit", "-m", f"evolution experiment {run_id}")
+        # Inject identity so commit succeeds even when target repo has no
+        # global git user.email / user.name configured.
+        self._git_in(
+            worktree,
+            "-c", "user.email=evolution@kernel.local",
+            "-c", "user.name=evolution-kernel",
+            "commit", "-m", f"evolution experiment {run_id}",
+        )
         return self._git_in(worktree, "rev-parse", "HEAD")
 
     def _run_role(self, role: RoleCommand, input_path: Path, output_path: Path, worktree: Path) -> None:
