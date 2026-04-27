@@ -55,11 +55,19 @@ class HardStops:
 
 
 @dataclass(frozen=True)
+class Roles:
+    planner: tuple[str, ...] = ()
+    executor: tuple[str, ...] = ()
+    evaluator: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class EvolutionConfig:
     mission: str
     evidence_sources: tuple[EvidenceSource, ...] = ()
     mutation_scope: MutationScope = field(default_factory=MutationScope)
     hard_stops: HardStops = field(default_factory=HardStops)
+    roles: Roles = field(default_factory=Roles)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -88,12 +96,14 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
     evidence_sources = tuple(_parse_evidence_sources(raw.get("evidence_sources", [])))
     mutation_scope = _parse_mutation_scope(raw.get("mutation_scope", {}))
     hard_stops = _parse_hard_stops(raw.get("hard_stops", {}))
+    roles = _parse_roles(raw.get("roles", {}))
 
     return EvolutionConfig(
         mission=mission.strip(),
         evidence_sources=evidence_sources,
         mutation_scope=mutation_scope,
         hard_stops=hard_stops,
+        roles=roles,
         raw=dict(raw),
     )
 
@@ -141,6 +151,27 @@ def _parse_mutation_scope(value: Any) -> MutationScope:
             )
         cleaned.append(entry.strip())
     return MutationScope(allowed_paths=tuple(cleaned))
+
+
+def _parse_roles(value: Any) -> Roles:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`roles` must be a mapping")
+    if not value:
+        return Roles()
+
+    def _argv(label: str) -> tuple[str, ...]:
+        v = value.get(label)
+        if v is None:
+            return ()
+        if isinstance(v, str):
+            return (v,)
+        if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
+            return tuple(x.strip() for x in v)
+        raise ConfigError(
+            f"`roles.{label}` must be a string or a list of non-empty strings"
+        )
+
+    return Roles(planner=_argv("planner"), executor=_argv("executor"), evaluator=_argv("evaluator"))
 
 
 def _parse_hard_stops(value: Any) -> HardStops:
