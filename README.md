@@ -175,6 +175,9 @@ loop halts even across CLI invocations.
 ### 2. Run a single iteration
 
 ```bash
+# one-time: install the package (pulls PyYAML, the only runtime dep)
+python3 -m pip install -e .
+
 # one-time: prepare a target repo
 bash examples/demo_target/setup.sh
 
@@ -183,6 +186,10 @@ python3 -m evolution_kernel.cli \
   --repo  examples/demo_target \
   --ledger /tmp/ek-ledger
 ```
+
+> The `pip install -e .` step is only needed once per environment — it pulls
+> `PyYAML>=6.0` (declared in `pyproject.toml`). After that the three-line
+> command above is reproducible from a clean checkout.
 
 Reset the persistent hard-stop counters when you want to start fresh:
 

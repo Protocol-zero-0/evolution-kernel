@@ -12,3 +12,10 @@ dependencies = [
 [project.scripts]
 evolution-kernel = "evolution_kernel.cli:main"
 
+[tool.setuptools]
+# Repo layout has multiple top-level dirs (`evolution_kernel`, `adapters`,
+# `examples`, `tests`); setuptools' flat-layout auto-discovery refuses to
+# pick one. Pin the runtime package explicitly so `pip install -e .` works
+# in a clean environment.
+packages = ["evolution_kernel"]
+
