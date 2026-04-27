@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "A minimal autonomous evolution kernel with isolated planner, executor, evaluator roles."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "PyYAML>=6.0",
 ]
