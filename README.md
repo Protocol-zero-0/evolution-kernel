@@ -218,7 +218,7 @@ The six acceptance bullets from issue #1 each map to a test in
 | 2 | Reject does not advance it | `test_reject_does_not_advance_accepted_branch` |
 | 3 | Mutation scope enforced + violation logged | `test_scope_violation_is_rejected_and_logged` |
 | 4 | Observer writes `observation.json` (file + shell) | `test_observer_writes_observation_with_file_and_shell` |
-| 5 | Hard stops halt then `reset` re-enables | `test_hard_stop_blocks_then_reset_allows` |
+| 5 | Hard stops halt then `reset` re-enables | `test_hard_stop_blocks_then_reset_allows_via_cli` |
 | 6 | Ledger contains all required artifacts | `test_ledger_contains_all_required_artifacts` |
 
 ### What this MVP intentionally does **not** do

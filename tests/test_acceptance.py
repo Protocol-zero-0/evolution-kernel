@@ -229,6 +229,23 @@ class AcceptanceTests(unittest.TestCase):
         patch = (run_dir / "patch.diff").read_text(encoding="utf-8")
         self.assertTrue(patch.strip(), "patch.diff is empty")
         self.assertIn("EVOLUTION_MARKER.txt", patch)
+        # `git apply` rejects patches without a trailing newline as corrupt;
+        # the ledger must be replayable, not just non-empty.
+        self.assertTrue(
+            patch.endswith("\n"),
+            "patch.diff is missing the trailing newline `git apply` requires",
+        )
+        # `git apply --numstat` parses the patch fully without touching the
+        # working tree, so it catches "corrupt patch at line N" syntax errors
+        # regardless of which commit is currently checked out.
+        numstat = subprocess.run(
+            ["git", "apply", "--numstat", str(run_dir / "patch.diff")],
+            cwd=self.repo, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(
+            numstat.returncode, 0,
+            f"patch.diff is not parseable by `git apply`: {numstat.stderr}",
+        )
 
 
 if __name__ == "__main__":

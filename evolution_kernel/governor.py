@@ -127,6 +127,10 @@ class Governor:
                 patch = self._git_in(
                     worktree, "diff", "--binary", baseline_commit, candidate_commit
                 )
+                # `_run` strips trailing whitespace; restore the final newline
+                # `git apply` requires for the patch to be replayable.
+                if patch and not patch.endswith("\n"):
+                    patch += "\n"
             else:
                 patch = ""
             (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
