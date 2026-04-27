@@ -1,0 +1,20 @@
+mission: "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints."
+
+evidence_sources:
+  - type: file
+    path: "metrics.json"
+  - type: shell
+    command: "bash scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner: ["python3", "bots/planner.py"]
+  executor: ["python3", "bots/executor.py"]
+  evaluator: ["python3", "bots/evaluator.py"]

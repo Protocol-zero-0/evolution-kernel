@@ -101,14 +101,25 @@ python3 adapters/token_ignition/evaluate_golden_cases.py
 
 ## CLI Shape
 
+Legacy direct-flags mode (still supported for the original golden-case tests):
+
 ```bash
-python3 -m evolution_kernel.cli \
+python3 -m evolution_kernel.cli run \
   --repo /path/to/target-repo \
   --ledger /path/to/evolution-ledger \
   --goal /path/to/goal.json \
   --planner python3 /path/to/planner.py \
   --executor python3 /path/to/executor.py \
   --evaluator python3 /path/to/evaluator.py
+```
+
+YAML-config mode (new in this MVP — observer + scope + hard stops):
+
+```bash
+python3 -m evolution_kernel.cli run \
+  --repo /path/to/target-repo \
+  --ledger /path/to/evolution-ledger \
+  --config /path/to/evolution.yml
 ```
 
 Each role command receives:
@@ -118,3 +129,100 @@ Each role command receives:
 --output <json>
 --worktree <sandbox path>
 ```
+
+## MVP Usage (closed loop with observer, scope, hard stops)
+
+This MVP wires the full closed loop described in the protocol:
+`config -> observe -> plan/execute -> evaluate -> accept/reject -> ledger`.
+
+### 1. Author an `evolution.yml`
+
+```yaml
+mission: "Add a minimal in-scope mutation so the evaluator accepts."
+
+evidence_sources:
+  - type: file
+    path: metrics.json
+  - type: shell
+    cmd: ["bash", "scripts/status.sh"]
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:   ["python3", "bots/planner.py"]
+  executor:  ["python3", "bots/executor.py"]
+  evaluator: ["python3", "bots/evaluator.py"]
+```
+
+`evidence_sources` are read into `observation.json` before the planner runs.
+`mutation_scope.allowed_paths` are enforced after the executor commits — anything
+outside the scope is auto-rejected with `decision.reason = "scope_violation: ..."`.
+`hard_stops` persist across runs in `<ledger>/.evolution_state.json` so a stuck
+loop halts even across CLI invocations.
+
+### 2. Run a single iteration
+
+```bash
+# one-time: prepare a target repo
+bash examples/demo_target/setup.sh
+
+python3 -m evolution_kernel.cli run \
+  --repo  examples/demo_target \
+  --ledger /tmp/ek-ledger \
+  --config examples/evolution.yml
+```
+
+Reset the persistent hard-stop counters when you want to start fresh:
+
+```bash
+python3 -m evolution_kernel.cli reset --ledger /tmp/ek-ledger
+```
+
+### 3. Inspect the ledger
+
+Every run produces a directory under `<ledger>/runs/<run_id>/` containing the
+full evidence trail:
+
+```text
+goal.json              # legacy mode only
+config.json            # full snapshot of the YAML config (full mode)
+observation.json       # what the observer collected before planning
+plan.json              # planner output
+patch.diff             # diff between baseline and candidate commit
+candidate_commit.txt   # the candidate commit hash inside the sandbox
+evaluation.json        # evaluator output (synthesised on scope_violation)
+decision.json          # accept / reject + reason
+reflection.json        # post-decision summary
+```
+
+### 4. Acceptance criteria -> tests
+
+The six acceptance bullets from issue #1 each map to a test in
+`tests/test_acceptance.py`:
+
+| # | Acceptance bullet | Test |
+| - | --- | --- |
+| 1 | Accept advances `evolution/accepted` | `test_accept_advances_accepted_branch` |
+| 2 | Reject does not advance it | `test_reject_does_not_advance_accepted_branch` |
+| 3 | Mutation scope enforced + violation logged | `test_scope_violation_is_rejected_and_logged` |
+| 4 | Observer writes `observation.json` (file + shell) | `test_observer_writes_observation_with_file_and_shell` |
+| 5 | Hard stops halt then `reset` re-enables | `test_hard_stop_blocks_then_reset_allows` |
+| 6 | Ledger contains all required artifacts | `test_ledger_contains_all_required_artifacts` |
+
+### What this MVP intentionally does **not** do
+
+In line with the issue's "out of scope" list:
+
+- No LLM / agent-swarm / dashboard.
+- No PR router and no auto-merge to upstream `main`.
+- No multi-target adapter framework — the only example target is
+  `examples/demo_target/`.
+- No container/process sandbox beyond git worktrees.
+
+These are the natural next steps once the kernel itself is trusted.
