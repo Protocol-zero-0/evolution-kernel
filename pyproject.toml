@@ -5,6 +5,9 @@ description = "A minimal autonomous evolution kernel with isolated planner, exec
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+dependencies = [
+    "PyYAML>=6.0",
+]
 
 [project.scripts]
 evolution-kernel = "evolution_kernel.cli:main"
