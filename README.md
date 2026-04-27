@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml"><img src="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml/badge.svg?branch=feat/mvp-observer-scope-hardstops" alt="tests"></a>
   <img src="https://img.shields.io/badge/status-v0%20prototype-orange" alt="Status: v0 prototype">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python >= 3.10">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
