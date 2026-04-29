@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .governor import Governor, RoleCommand
@@ -60,7 +61,11 @@ def main() -> None:
     hard_stop_cfg = cfg.hard_stops if cfg else HardStopConfig()
 
     guard = HardStopGuard(ledger_dir, hard_stop_cfg)
-    guard.check()
+    try:
+        guard.check()
+    except Exception as exc:
+        print(json.dumps({"error": "hard_stop", "detail": str(exc)}, indent=2), file=sys.stderr)
+        sys.exit(1)
 
     result = Governor(
         target_repo=args.repo,
