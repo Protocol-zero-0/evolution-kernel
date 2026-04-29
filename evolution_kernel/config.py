@@ -27,9 +27,9 @@ class HardStopConfig:
 
 @dataclass(frozen=True)
 class RolesConfig:
-    planner: list[str]
-    executor: list[str]
-    evaluator: list[str]
+    planner: tuple[str, ...]
+    executor: tuple[str, ...]
+    evaluator: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -42,16 +42,22 @@ class EvolutionConfig:
 
 
 def load_config(path: Path) -> EvolutionConfig:
-    data: dict[str, Any] = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"config file must be a YAML mapping, got {type(raw).__name__}: {path}")
+    data: dict[str, Any] = raw
 
-    sources = tuple(
-        EvidenceSource(
-            type=s["type"],
-            path=s.get("path"),
-            command=s.get("command"),
+    try:
+        sources = tuple(
+            EvidenceSource(
+                type=s["type"],
+                path=s.get("path"),
+                command=s.get("command"),
+            )
+            for s in data.get("evidence_sources", [])
         )
-        for s in data.get("evidence_sources", [])
-    )
+    except KeyError as exc:
+        raise ValueError(f"evidence_source entry missing required key {exc} in {path}") from exc
 
     scope_data = data.get("mutation_scope", {})
     scope = MutationScope(
@@ -59,19 +65,25 @@ def load_config(path: Path) -> EvolutionConfig:
     )
 
     stops_data = data.get("hard_stops", {})
-    stops = HardStopConfig(
-        max_iterations=int(stops_data.get("max_iterations", 0)),
-        max_consecutive_failures=int(stops_data.get("max_consecutive_failures", 0)),
-    )
+    try:
+        stops = HardStopConfig(
+            max_iterations=int(stops_data.get("max_iterations", 0)),
+            max_consecutive_failures=int(stops_data.get("max_consecutive_failures", 0)),
+        )
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"invalid hard_stops value in {path}: {exc}") from exc
 
     roles_data = data.get("roles")
     roles: RolesConfig | None = None
     if roles_data:
-        roles = RolesConfig(
-            planner=list(roles_data["planner"]),
-            executor=list(roles_data["executor"]),
-            evaluator=list(roles_data["evaluator"]),
-        )
+        try:
+            roles = RolesConfig(
+                planner=tuple(roles_data["planner"]),
+                executor=tuple(roles_data["executor"]),
+                evaluator=tuple(roles_data["evaluator"]),
+            )
+        except KeyError as exc:
+            raise ValueError(f"roles block missing required key {exc} in {path}") from exc
 
     return EvolutionConfig(
         mission=str(data.get("mission", "")),

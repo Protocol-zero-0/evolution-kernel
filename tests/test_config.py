@@ -54,7 +54,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.hard_stops.max_iterations, 5)
         self.assertEqual(cfg.hard_stops.max_consecutive_failures, 2)
         self.assertIsNotNone(cfg.roles)
-        self.assertEqual(cfg.roles.planner, ["python3", "planner.py"])
+        self.assertEqual(cfg.roles.planner, ("python3", "planner.py"))
 
     def test_load_minimal_config(self):
         with tempfile.TemporaryDirectory() as d:
@@ -78,6 +78,37 @@ class ConfigTests(unittest.TestCase):
             roles=None,
         )
         self.assertEqual(cfg.mutation_scope.allowed_paths, ())
+
+    def test_missing_type_in_evidence_source_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg_path = self._write(Path(d), """
+                mission: "test"
+                evidence_sources:
+                  - path: "./metrics.json"
+            """)
+            with self.assertRaises(ValueError) as ctx:
+                load_config(cfg_path)
+        self.assertIn("type", str(ctx.exception))
+
+    def test_non_dict_yaml_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "evolution.yml"
+            p.write_text("- item1\n- item2\n", encoding="utf-8")
+            with self.assertRaises(ValueError) as ctx:
+                load_config(p)
+        self.assertIn("mapping", str(ctx.exception))
+
+    def test_roles_missing_key_raises_value_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg_path = self._write(Path(d), """
+                mission: "test"
+                roles:
+                  planner: ["python3", "p.py"]
+                  executor: ["python3", "e.py"]
+            """)
+            with self.assertRaises(ValueError) as ctx:
+                load_config(cfg_path)
+        self.assertIn("evaluator", str(ctx.exception))
 
 
 if __name__ == "__main__":
