@@ -1,0 +1,15 @@
+mission: "Improve the target project under strict reproducibility constraints."
+
+evidence_sources:
+  - type: file
+    path: "./metrics.json"
+  - type: shell
+    command: "bash ./scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "EVOLUTION_MARKER.txt"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
