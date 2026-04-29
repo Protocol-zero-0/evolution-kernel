@@ -80,7 +80,8 @@ class Governor:
                 from .observer import Observer
                 observation = Observer().run(self._observation_sources, worktree, run_dir)
             else:
-                self._write_json(run_dir / "observation.json", {"sources": []})
+                observation = {"sources": []}
+                self._write_json(run_dir / "observation.json", observation)
 
             self._write_json(
                 run_dir / "planner_input.json",
