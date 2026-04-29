@@ -8,3 +8,5 @@ dist/
 build/
 *.log
 .worktrees/
+docs/superpowers/
+new-prd.md
