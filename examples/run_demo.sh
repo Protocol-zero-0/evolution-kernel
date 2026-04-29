@@ -6,15 +6,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEMO_TARGET="$SCRIPT_DIR/demo-target"
 LEDGER="/tmp/ek-demo-ledger"
 
-echo "=== Setting up demo target repo ==="
+echo "=== Setting up demo target repo (fresh) ==="
 cd "$DEMO_TARGET"
-if [ ! -d ".git" ]; then
-  git init
-  git config user.email "demo@example.com"
-  git config user.name "Demo User"
-  git add -A
-  git commit -m "initial"
-fi
+rm -rf .git
+git init
+git config user.email "demo@example.com"
+git config user.name "Demo User"
+git add -A
+git commit -m "initial"
 
 echo "=== Resetting ledger ==="
 rm -rf "$LEDGER"
