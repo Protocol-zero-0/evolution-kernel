@@ -45,12 +45,17 @@ class Governor:
         planner: RoleCommand,
         executor: RoleCommand,
         evaluator: RoleCommand,
+        *,
+        observation_sources: Sequence[Any] | None = None,
+        allowed_paths: Sequence[str] | None = None,
     ) -> None:
         self.target_repo = Path(target_repo).resolve()
         self.ledger_dir = Path(ledger_dir).resolve()
         self.planner = planner
         self.executor = executor
         self.evaluator = evaluator
+        self._observation_sources = observation_sources
+        self._allowed_paths = tuple(allowed_paths) if allowed_paths else ()
 
     def run_once(self, goal: Mapping[str, Any], run_id: str | None = None) -> RunResult:
         self._ensure_git_repo()
@@ -68,6 +73,15 @@ class Governor:
 
         try:
             self._write_json(run_dir / "goal.json", dict(goal))
+
+            # Collect evidence before planning (worktree is already checked out at this point)
+            observation: dict[str, Any] = {}
+            if self._observation_sources:
+                from .observer import Observer
+                observation = Observer().run(self._observation_sources, worktree, run_dir)
+            else:
+                self._write_json(run_dir / "observation.json", {"sources": []})
+
             self._write_json(
                 run_dir / "planner_input.json",
                 {
@@ -77,6 +91,7 @@ class Governor:
                     "baseline_commit": baseline_commit,
                     "worktree": str(worktree),
                     "ledger_dir": str(self.ledger_dir),
+                    "observation": observation,
                 },
             )
             self._run_role(self.planner, run_dir / "planner_input.json", run_dir / "plan.json", worktree)
@@ -98,9 +113,35 @@ class Governor:
                 worktree,
             )
 
+            if self._allowed_paths:
+                violated = self._check_scope(worktree)
+                if violated:
+                    decision = RunDecision(
+                        False, "scope_violation", baseline_commit, None, baseline_commit
+                    )
+                    (run_dir / "candidate_commit.txt").write_text("", encoding="utf-8")
+                    self._write_json(
+                        run_dir / "decision.json",
+                        {**decision.__dict__, "violated_paths": violated, "scope_violation": True},
+                    )
+                    self._write_json(
+                        run_dir / "reflection.json",
+                        {
+                            "run_id": run_id,
+                            "accepted": False,
+                            "reason": "scope_violation",
+                            "metrics": {},
+                            "created_at": self._now(),
+                        },
+                    )
+                    return RunResult(run_id, run_dir, worktree, decision, {})
+
             patch = self._git_in(worktree, "diff", "--binary")
             (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
             candidate_commit = self._commit_candidate(worktree, run_id)
+            (run_dir / "candidate_commit.txt").write_text(
+                (candidate_commit or "") + "\n", encoding="utf-8"
+            )
 
             self._write_json(
                 run_dir / "evaluator_input.json",
@@ -162,6 +203,22 @@ class Governor:
         if hard_gates_passed and recommended in {"accept", "promote"}:
             return RunDecision(True, "hard gates passed and evaluator recommended promotion", baseline_commit, candidate_commit, baseline_commit)
         return RunDecision(False, "hard gates failed or evaluator rejected candidate", baseline_commit, candidate_commit, baseline_commit)
+
+    def _check_scope(self, worktree: Path) -> list[str]:
+        """Return paths changed outside allowed_paths. Empty list means no violation."""
+        lines = self._git_in(worktree, "status", "--porcelain").splitlines()
+        changed: list[str] = []
+        for line in lines:
+            if len(line) < 4:
+                continue
+            # porcelain format: "XY filename" or "XY old -> new" (rename)
+            name_part = line[3:]
+            parts = name_part.split(" -> ")
+            changed.append(parts[-1].strip())
+        return [
+            f for f in changed
+            if not any(f.startswith(p) for p in self._allowed_paths)
+        ]
 
     def _commit_candidate(self, worktree: Path, run_id: str) -> str | None:
         if not self._git_in(worktree, "status", "--porcelain").strip():

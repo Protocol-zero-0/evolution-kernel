@@ -92,11 +92,66 @@ class GovernorTests(unittest.TestCase):
             "evaluation.json",
             "decision.json",
             "reflection.json",
+            "observation.json",
+            "candidate_commit.txt",
         ]
         for filename in expected:
             self.assertTrue((run_dir / filename).exists(), filename)
         decision = json.loads((run_dir / "decision.json").read_text(encoding="utf-8"))
         self.assertEqual(decision["rollback_target"], decision["baseline_commit"])
+
+    def test_ledger_contains_observation_and_candidate_commit(self):
+        Governor(
+            self.repo,
+            self.ledger,
+            self.role("planner.py"),
+            self.role("executor.py"),
+            self.role("evaluator_accept.py"),
+        ).run_once({"name": "test"}, run_id="0001")
+
+        run_dir = self.ledger / "runs" / "0001"
+        self.assertTrue((run_dir / "observation.json").exists())
+        self.assertTrue((run_dir / "candidate_commit.txt").exists())
+
+    def test_scope_violation_rejects_without_calling_evaluator(self):
+        # executor writes EVOLUTION_MARKER.txt; allowed_paths only allows "src/"
+        result = Governor(
+            self.repo,
+            self.ledger,
+            self.role("planner.py"),
+            self.role("executor.py"),
+            self.role("evaluator_accept.py"),
+            allowed_paths=["src/"],
+        ).run_once({"name": "test"}, run_id="0001")
+
+        self.assertFalse(result.decision.accepted)
+        self.assertEqual(result.decision.reason, "scope_violation")
+        decision = json.loads(
+            (self.ledger / "runs" / "0001" / "decision.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("violated_paths", decision)
+        self.assertTrue(len(decision["violated_paths"]) > 0)
+        # evaluator was NOT called — no evaluation.json
+        self.assertFalse((self.ledger / "runs" / "0001" / "evaluation.json").exists())
+
+    def test_observation_injected_into_planner_input(self):
+        from evolution_kernel.config import EvidenceSource
+        sources = (EvidenceSource(type="shell", command="echo hello-obs"),)
+        Governor(
+            self.repo,
+            self.ledger,
+            self.role("planner.py"),
+            self.role("executor.py"),
+            self.role("evaluator_accept.py"),
+            observation_sources=sources,
+        ).run_once({"name": "test"}, run_id="0001")
+
+        planner_input = json.loads(
+            (self.ledger / "runs" / "0001" / "planner_input.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("observation", planner_input)
+        obs_sources = planner_input["observation"]["sources"]
+        self.assertTrue(any("hello-obs" in s.get("stdout", "") for s in obs_sources))
 
 
 if __name__ == "__main__":
