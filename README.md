@@ -21,6 +21,19 @@
 
 **Evolution Kernel** is a minimal protocol and runtime for autonomous, self-evolving software systems.
 
+## Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Run the demo (uses fixture roles from tests/fixtures/)
+bash examples/run_demo.sh
+
+# Check the result
+cat /tmp/ek-demo-ledger/runs/0001/decision.json
+```
+
 It is not a project-specific automation script. Its purpose is to make software evolution **controlled, reproducible, sandboxed, auditable, and reversible**. Any project can become an optimization target once it can expose a goal, a sandbox, and an evaluator.
 
 ## Why It Exists
@@ -99,16 +112,26 @@ python3 -m unittest discover -s tests -v
 python3 adapters/token_ignition/evaluate_golden_cases.py
 ```
 
-## CLI Shape
+## CLI
 
 ```bash
+# Using a config file (recommended)
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /tmp/evolution-ledger
+
+# Legacy: explicit role args (backward compatible)
 python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --goal /path/to/goal.json \
-  --planner python3 /path/to/planner.py \
-  --executor python3 /path/to/executor.py \
-  --evaluator python3 /path/to/evaluator.py
+  --ledger /tmp/evolution-ledger \
+  --goal goal.json \
+  --planner python3 my_planner.py \
+  --executor python3 my_executor.py \
+  --evaluator python3 my_evaluator.py
+
+# Reset hard stop state
+python3 -m evolution_kernel.cli --reset --ledger /tmp/evolution-ledger
 ```
 
 Each role command receives:
@@ -118,3 +141,43 @@ Each role command receives:
 --output <json>
 --worktree <sandbox path>
 ```
+
+## Config format (`evolution.yml`)
+
+```yaml
+mission: "Improve the project."
+
+evidence_sources:
+  - type: file
+    path: "./metrics.json"
+  - type: shell
+    command: "bash ./scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+    - "tests/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:  ["python3", "my_planner.py"]
+  executor: ["python3", "my_executor.py"]
+  evaluator: ["python3", "my_evaluator.py"]
+```
+
+## Ledger artifacts (per run)
+
+Each run produces the following files in `ledger/runs/{run_id}/`:
+
+| File | Description |
+|---|---|
+| `observation.json` | Evidence collected before planning |
+| `plan.json` | Planner output |
+| `patch.diff` | Changes made by executor |
+| `candidate_commit.txt` | SHA of the candidate commit |
+| `evaluation.json` | Evaluator verdict |
+| `decision.json` | Accept/reject decision with reason |
+| `reflection.json` | Summary for auditing |

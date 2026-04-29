@@ -19,15 +19,28 @@
   <img src="https://img.shields.io/badge/runtime-Git%20worktree%20sandbox-purple" alt="Git worktree sandbox">
 </p>
 
-**Evolution Kernel** 是一个面向“自主自我进化软件系统”的最小协议与运行时。
+**Evolution Kernel** 是一个面向自主自我进化软件系统的最小协议与运行时。
 
 它不是某个具体项目的自动化脚本，而是一个通用的进化内核。它的目标是让软件项目的持续改进过程变得**可控、可复现、可沙箱化、可审计、可回滚**。只要一个项目能够提供目标、沙箱和评估器，就可以成为它的优化对象。
+
+## 快速开始
+
+```bash
+# 安装
+pip install -e .
+
+# 运行 Demo（使用 tests/fixtures/ 中的 fixture 角色）
+bash examples/run_demo.sh
+
+# 查看结果
+cat /tmp/ek-demo-ledger/runs/0001/decision.json
+```
 
 ## 为什么需要它
 
 现代 coding agent 可以提出并修改代码，但长期的软件自我改进不只需要代码生成，还需要一个稳定的内核来管理整个进化闭环：
 
-- 定义目标项目里的“改进”到底意味着什么；
+- 定义目标项目里的"改进"到底意味着什么；
 - 在影响已接受分支之前隔离每一次实验；
 - 用可复现的标准评估候选变更；
 - 只晋升通过评估的候选结果；
@@ -99,16 +112,26 @@ python3 -m unittest discover -s tests -v
 python3 adapters/token_ignition/evaluate_golden_cases.py
 ```
 
-## CLI 形状
+## CLI
 
 ```bash
+# 使用配置文件（推荐）
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /tmp/evolution-ledger
+
+# 旧式：显式指定角色参数（向后兼容）
 python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --goal /path/to/goal.json \
-  --planner python3 /path/to/planner.py \
-  --executor python3 /path/to/executor.py \
-  --evaluator python3 /path/to/evaluator.py
+  --ledger /tmp/evolution-ledger \
+  --goal goal.json \
+  --planner python3 my_planner.py \
+  --executor python3 my_executor.py \
+  --evaluator python3 my_evaluator.py
+
+# 重置 hard stop 状态
+python3 -m evolution_kernel.cli --reset --ledger /tmp/evolution-ledger
 ```
 
 每个角色命令都会收到：
@@ -118,3 +141,43 @@ python3 -m evolution_kernel.cli \
 --output <json>
 --worktree <sandbox path>
 ```
+
+## 配置格式（`evolution.yml`）
+
+```yaml
+mission: "Improve the project."
+
+evidence_sources:
+  - type: file
+    path: "./metrics.json"
+  - type: shell
+    command: "bash ./scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+    - "tests/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:  ["python3", "my_planner.py"]
+  executor: ["python3", "my_executor.py"]
+  evaluator: ["python3", "my_evaluator.py"]
+```
+
+## Ledger 产物（每次运行）
+
+每次运行会在 `ledger/runs/{run_id}/` 目录下生成以下文件：
+
+| 文件 | 说明 |
+|---|---|
+| `observation.json` | 规划前收集的证据 |
+| `plan.json` | Planner 的输出 |
+| `patch.diff` | Executor 所做的变更 |
+| `candidate_commit.txt` | 候选提交的 SHA |
+| `evaluation.json` | Evaluator 的评估结论 |
+| `decision.json` | 接受/拒绝决策及原因 |
+| `reflection.json` | 用于审计的运行摘要 |
