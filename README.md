@@ -21,6 +21,19 @@
 
 **Evolution Kernel** is a minimal protocol and runtime for autonomous, self-evolving software systems.
 
+## Quick Start
+
+```bash
+# Install
+pip install -e .
+
+# Run the demo (uses fixture roles from tests/fixtures/)
+bash examples/run_demo.sh
+
+# Check the result
+cat /tmp/ek-demo-ledger/runs/0001/decision.json
+```
+
 It is not a project-specific automation script. Its purpose is to make software evolution **controlled, reproducible, sandboxed, auditable, and reversible**. Any project can become an optimization target once it can expose a goal, a sandbox, and an evaluator.
 
 ## Why It Exists
@@ -39,11 +52,15 @@ Evolution Kernel provides that loop as a small, inspectable runtime.
 
 ```mermaid
 flowchart LR
-    Goal[Goal] --> Governor[Governor]
-    Governor --> Planner[Planner]
+    Config[Config] --> Governor[Governor]
+    Governor --> Observer[Observer]
+    Observer --> Obs[observation.json]
+    Obs --> Planner[Planner]
     Planner --> Plan[plan.json]
     Plan --> Executor[Executor]
-    Executor --> Candidate[Sandbox candidate]
+    Executor --> Scope{Scope check}
+    Scope -- violation --> Reject[Reject + ledger]
+    Scope -- ok --> Candidate[Sandbox candidate]
     Candidate --> Evaluator[Evaluator]
     Evaluator --> Eval[evaluation.json]
     Eval --> Governor
@@ -59,31 +76,65 @@ Token-Ignition is therefore the first optimization target and reference adapter,
 
 ## Current Status
 
-The current v0 implementation provides the foundational runtime:
-
 | Area | What exists now |
 | --- | --- |
 | Governor | Deterministic orchestration for planning, execution, evaluation, promotion, rollback, and ledger updates. |
 | Sandbox | Git worktree-based experiment isolation. Candidate changes do not affect the accepted branch unless promoted. |
+| Observer | Collects evidence from local files and shell commands before planning; writes `observation.json` into the ledger. |
+| Mutation scope | `allowed_paths` enforces which files the executor may touch; violations are recorded as `scope_violation` without calling the evaluator. |
+| Hard stops | `max_iterations` and `max_consecutive_failures` limits persist across runs in `ledger/state.json`; `--reset` clears them. |
+| YAML config | `evolution.yml` unifies mission, evidence sources, mutation scope, hard stops, and role commands in one file. |
 | Role handoff | `planner`, `executor`, and `evaluator` run as isolated commands and communicate through JSON files. |
 | Promotion model | Accepted candidates advance the local `evolution/accepted` branch. Rejected experiments remain recorded but do not advance it. |
-| First adapter | A Token-Ignition adapter with a hand-written golden set for evaluator evolution. |
 
-## What It Does Not Do Yet
+## Acceptance Checklist
 
-| Not yet | Why it matters |
+Run the following scenarios to verify the kernel works end-to-end:
+
+```bash
+# 1. Full happy path (accept)
+bash examples/run_demo.sh
+cat /tmp/ek-demo-ledger/runs/0001/decision.json   # expect accepted: true
+
+# 2. Evaluator rejects → decision recorded, no promotion
+# Edit examples/run_demo.sh to use evaluator_reject.py, re-run, check:
+cat /tmp/ek-demo-ledger/runs/0001/decision.json   # expect accepted: false
+
+# 3. Observer writes evidence
+cat /tmp/ek-demo-ledger/runs/0001/observation.json  # expect sources[] with results
+
+# 4. Mutation scope violation → scope_violation, evaluator NOT called
+# (see test_scope_violation_rejects_without_calling_evaluator in tests/test_governor.py)
+
+# 5. Hard stop (max_consecutive_failures)
+bash examples/run_demo_hard_stop.sh               # expect HardStopError after 2 failures
+
+# 6. Reset hard stop state
+python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-demo-ledger
+# Re-run → expect normal execution again
+```
+
+Or run the full unit test suite:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## Current Limitations
+
+| Limitation | Detail |
 | --- | --- |
-| LLM-native planner/executor | The current tests use fixture scripts; real agent integrations are the next step. |
-| Strong process/container sandboxing | Git worktrees isolate files, but executor and evaluator isolation should become stronger. |
-| Multi-target adapter framework | Token-Ignition is the first target; more adapters are needed to prove generality. |
-| Parallel evolution branches | v0 focuses on one accepted branch and a simple promotion path. |
+| No LLM-native roles | Planner/executor/evaluator are shell scripts or Python fixtures; real agent integrations are the next step. |
+| File-only sandbox | Git worktrees isolate files; process/container-level isolation is not yet enforced. |
+| Single evolution branch | v0 supports one `evolution/accepted` branch; parallel branches are not yet supported. |
+| Scope check is path-prefix only | `allowed_paths` are matched by string prefix against `git status` output; glob or regex patterns are not supported. |
 
 ## Roadmap
 
 - [ ] Add LLM-driven planner and executor implementations.
-- [ ] Add stronger sandbox isolation for executor and evaluator runs.
+- [ ] Strengthen sandbox isolation (process/container level).
 - [ ] Generalize the adapter interface beyond Token-Ignition.
-- [ ] Add examples for multiple project types.
+- [ ] Support glob/regex patterns in `mutation_scope.allowed_paths`.
 - [ ] Support parallel evolution branches and richer merge strategies.
 - [ ] Improve reporting around ledger history, promotion decisions, and rejected candidates.
 
@@ -99,16 +150,26 @@ python3 -m unittest discover -s tests -v
 python3 adapters/token_ignition/evaluate_golden_cases.py
 ```
 
-## CLI Shape
+## CLI
 
 ```bash
+# Using a config file (recommended)
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /tmp/evolution-ledger
+
+# Legacy: explicit role args (backward compatible)
 python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --goal /path/to/goal.json \
-  --planner python3 /path/to/planner.py \
-  --executor python3 /path/to/executor.py \
-  --evaluator python3 /path/to/evaluator.py
+  --ledger /tmp/evolution-ledger \
+  --goal goal.json \
+  --planner python3 my_planner.py \
+  --executor python3 my_executor.py \
+  --evaluator python3 my_evaluator.py
+
+# Reset hard stop state
+python3 -m evolution_kernel.cli --reset --ledger /tmp/evolution-ledger
 ```
 
 Each role command receives:
@@ -118,3 +179,43 @@ Each role command receives:
 --output <json>
 --worktree <sandbox path>
 ```
+
+## Config format (`evolution.yml`)
+
+```yaml
+mission: "Improve the project."
+
+evidence_sources:
+  - type: file
+    path: "./metrics.json"
+  - type: shell
+    command: "bash ./scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+    - "tests/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:  ["python3", "my_planner.py"]
+  executor: ["python3", "my_executor.py"]
+  evaluator: ["python3", "my_evaluator.py"]
+```
+
+## Ledger artifacts (per run)
+
+Each run produces the following files in `ledger/runs/{run_id}/`:
+
+| File | Description |
+|---|---|
+| `observation.json` | Evidence collected before planning |
+| `plan.json` | Planner output |
+| `patch.diff` | Changes made by executor |
+| `candidate_commit.txt` | SHA of the candidate commit |
+| `evaluation.json` | Evaluator verdict |
+| `decision.json` | Accept/reject decision with reason |
+| `reflection.json` | Summary for auditing |

@@ -7,3 +7,6 @@ __pycache__/
 dist/
 build/
 *.log
+.worktrees/
+docs/superpowers/
+new-prd.md
