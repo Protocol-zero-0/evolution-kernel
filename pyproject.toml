@@ -4,8 +4,19 @@ version = "0.1.0"
 description = "A minimal autonomous evolution kernel with isolated planner, executor, evaluator roles."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "PyYAML>=6.0",
+]
 
 [project.scripts]
 evolution-kernel = "evolution_kernel.cli:main"
+
+[tool.setuptools]
+# Repo layout has multiple top-level dirs (`evolution_kernel`, `adapters`,
+# `examples`, `tests`); setuptools' flat-layout auto-discovery refuses to
+# pick one. Pin the runtime package explicitly so `pip install -e .` works
+# in a clean environment.
+packages = ["evolution_kernel"]
 

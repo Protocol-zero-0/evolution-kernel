@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml"><img src="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml/badge.svg?branch=feat/mvp-observer-scope-hardstops" alt="tests"></a>
   <img src="https://img.shields.io/badge/status-v0%20prototype-orange" alt="Status: v0 prototype">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python >= 3.10">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
@@ -101,6 +102,17 @@ python3 adapters/token_ignition/evaluate_golden_cases.py
 
 ## CLI Shape
 
+YAML-config mode (the primary MVP entry point — observer + scope + hard stops):
+
+```bash
+python3 -m evolution_kernel.cli \
+  --config /path/to/evolution.yml \
+  --repo /path/to/target-repo \
+  --ledger /path/to/evolution-ledger
+```
+
+Legacy direct-flags mode (still supported for the original golden-case tests):
+
 ```bash
 python3 -m evolution_kernel.cli \
   --repo /path/to/target-repo \
@@ -111,6 +123,12 @@ python3 -m evolution_kernel.cli \
   --evaluator python3 /path/to/evaluator.py
 ```
 
+Reset the persistent hard-stop state (after a halt) without running a loop:
+
+```bash
+python3 -m evolution_kernel.cli --reset --ledger /path/to/evolution-ledger
+```
+
 Each role command receives:
 
 ```text
@@ -118,3 +136,107 @@ Each role command receives:
 --output <json>
 --worktree <sandbox path>
 ```
+
+## MVP Usage (closed loop with observer, scope, hard stops)
+
+This MVP wires the full closed loop described in the protocol:
+`config -> observe -> plan/execute -> evaluate -> accept/reject -> ledger`.
+
+### 1. Author an `evolution.yml`
+
+```yaml
+mission: "Add a minimal in-scope mutation so the evaluator accepts."
+
+evidence_sources:
+  - type: file
+    path: metrics.json
+  - type: shell
+    command: "bash scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+
+roles:
+  planner:   ["python3", "bots/planner.py"]
+  executor:  ["python3", "bots/executor.py"]
+  evaluator: ["python3", "bots/evaluator.py"]
+```
+
+`evidence_sources` are read into `observation.json` before the planner runs.
+`mutation_scope.allowed_paths` are enforced after the executor commits — anything
+outside the scope is auto-rejected with `decision.reason = "scope_violation: ..."`.
+`hard_stops` persist across runs in `<ledger>/.evolution_state.json` so a stuck
+loop halts even across CLI invocations.
+
+### 2. Run a single iteration
+
+```bash
+# one-time: install the package (pulls PyYAML, the only runtime dep)
+python3 -m pip install -e .
+
+# one-time: prepare a target repo
+bash examples/demo_target/setup.sh
+
+python3 -m evolution_kernel.cli \
+  --config examples/evolution.yml \
+  --repo  examples/demo_target \
+  --ledger /tmp/ek-ledger
+```
+
+> The `pip install -e .` step is only needed once per environment — it pulls
+> `PyYAML>=6.0` (declared in `pyproject.toml`). After that the three-line
+> command above is reproducible from a clean checkout.
+
+Reset the persistent hard-stop counters when you want to start fresh:
+
+```bash
+python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-ledger
+```
+
+### 3. Inspect the ledger
+
+Every run produces a directory under `<ledger>/runs/<run_id>/` containing the
+full evidence trail:
+
+```text
+goal.json              # legacy mode only
+config.json            # full snapshot of the YAML config (full mode)
+observation.json       # what the observer collected before planning
+plan.json              # planner output
+patch.diff             # diff between baseline and candidate commit
+candidate_commit.txt   # the candidate commit hash inside the sandbox
+evaluation.json        # evaluator output (synthesised on scope_violation)
+decision.json          # accept / reject + reason
+reflection.json        # post-decision summary
+```
+
+### 4. Acceptance criteria -> tests
+
+The six acceptance bullets from issue #1 each map to a test in
+`tests/test_acceptance.py`:
+
+| # | Acceptance bullet | Test |
+| - | --- | --- |
+| 1 | Accept advances `evolution/accepted` | `test_accept_advances_accepted_branch` |
+| 2 | Reject does not advance it | `test_reject_does_not_advance_accepted_branch` |
+| 3 | Mutation scope enforced + violation logged | `test_scope_violation_is_rejected_and_logged` |
+| 4 | Observer writes `observation.json` (file + shell) | `test_observer_writes_observation_with_file_and_shell` |
+| 5 | Hard stops halt then `reset` re-enables | `test_hard_stop_blocks_then_reset_allows_via_cli` |
+| 6 | Ledger contains all required artifacts | `test_ledger_contains_all_required_artifacts` |
+
+### What this MVP intentionally does **not** do
+
+In line with the issue's "out of scope" list:
+
+- No LLM / agent-swarm / dashboard.
+- No PR router and no auto-merge to upstream `main`.
+- No multi-target adapter framework — the only example target is
+  `examples/demo_target/`.
+- No container/process sandbox beyond git worktrees.
+
+These are the natural next steps once the kernel itself is trusted.
