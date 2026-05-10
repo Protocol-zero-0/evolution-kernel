@@ -152,8 +152,7 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 [gen 21] STOP — 连续 4 代无显著改进
 
-{"halted": true, "reason": "max_consecutive_failures", "iterations": 21,
- "total_usd": 34.10, "total_tokens": 9841200}
+{"halted": true, "reason": "max_consecutive_failures reached (4)"}
 ```
 
 ```
@@ -170,12 +169,16 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ```
 ledger/
-  .evolution_state.json       ← 预算计数器，进程重启后依然有效
+  .evolution_state.json       ← hard-stop 完整状态：迭代数、连续失败数、usd、tokens；进程重启后不丢失
   runs/
     0001/
       config.json             ← 你的 evolution.yml 完整快照
       observation.json        ← evidence_sources 命令的原始输出
+      planner_input.json      ← 喂给规划器的目标 + 观察 + 历史
       plan.json               ← LLM 方案：摘要 · 步骤 · 预期改进
+      executor_input.json     ← 喂给执行器的方案 + worktree 路径
+      executor_output.json    ← 执行器结果
+      evaluator_input.json    ← 喂给评估器的目标 + patch + 观察
       patch.diff              ← 执行器实际应用的 diff
       candidate_commit.txt    ← 沙箱 commit 的 git SHA
       evaluation.json         ← 评估结果 + 指标 + cost_usd + tokens_used
@@ -183,7 +186,7 @@ ledger/
       reflection.json         ← 注入下一轮历史的一行摘要
     0002/  ...
   halted/
-    20260501T120000Z.json     ← 任何 hard stop 触发时写入
+    20260501T120000Z.json     ← 任何 hard stop 触发时写入完整运行统计（迭代数、usd、tokens）
 ```
 
 回滚一个 session 的所有变更：
@@ -243,19 +246,19 @@ flowchart LR
 
 ```yaml
 # 必填——"更好"对你的项目意味着什么
-mission: "让游戏 AI 对内置对手的胜率达到 60% 以上"
+mission: "改进 agent harness，让模型在基准测试上的分数超过 70%"
 
 # 如何衡量当前状态
 evidence_sources:
   - type: shell         # stdout 写入 observation.json
-    command: "python3 scripts/tournament.py --games 20 --json"
+    command: "python3 scripts/run_benchmark.py --sample 50 --json"
   - type: file          # 文件内容写入 observation.json
     path: "metrics.json"
 
 # 只有这些路径下的文件允许被修改
 mutation_scope:
   allowed_paths:
-    - "ai/"             # 不在列表里的改动自动拒绝
+    - "src/agent_harness/"   # 不在列表里的改动自动拒绝
 
 # 何时停止
 hard_stops:
@@ -309,7 +312,7 @@ evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledge
 # 只跑一轮
 evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger
 
-# 触发 halt 后重置预算计数器
+# 重置全部 hard-stop 状态（迭代数、失败数、预算），开始新 session
 evolution-kernel --ledger /tmp/ledger --reset
 ```
 
