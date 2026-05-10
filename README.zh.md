@@ -1,241 +1,354 @@
 # Evolution Kernel
 
 <p align="center">
-  <strong>一个用于自主优化软件项目的通用进化引擎。</strong>
+  <strong>给 LLM 一个目标，让代码库自己进化，预算用完自动停。</strong>
+</p>
+
+<p align="center">
+  约 1,200 行 Python 运行时，对任意代码库跑全自动多轮改进循环——<br>
+  隔离在 git worktree 沙箱里，每一个决策留档，每一次变更可回滚。
 </p>
 
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="docs/protocol.md">协议</a>
-  ·
-  <a href="docs/token-ignition-first-task.md">首个优化对象</a>
+  <a href="docs/protocol.md">协议文档</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml"><img src="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml/badge.svg?branch=feat/mvp-observer-scope-hardstops" alt="tests"></a>
-  <img src="https://img.shields.io/badge/status-v0%20prototype-orange" alt="状态：v0 原型">
-  <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python >= 3.10">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/runtime-Git%20worktree%20sandbox-purple" alt="Git worktree sandbox">
+  <a href="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml">
+    <img src="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml/badge.svg" alt="tests">
+  </a>
+  <img src="https://img.shields.io/badge/status-v0.2-blue" alt="v0.2">
+  <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python ≥ 3.10">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
+  <img src="https://img.shields.io/badge/dep-PyYAML%20only-lightgrey" alt="仅依赖 PyYAML">
 </p>
 
-**Evolution Kernel** 是一个面向“自主自我进化软件系统”的最小协议与运行时。
+---
 
-它不是某个具体项目的自动化脚本，而是一个通用的进化内核。它的目标是让软件项目的持续改进过程变得**可控、可复现、可沙箱化、可审计、可回滚**。只要一个项目能够提供目标、沙箱和评估器，就可以成为它的优化对象。
+<p align="center">
+  <em>把它理解成 AlphaEvolve——但目标是你自己的代码仓库。</em><br>
+  <em>你定义"更好"是什么意思，内核负责找到如何到达那里。</em>
+</p>
 
-## 为什么需要它
+---
 
-现代 coding agent 可以提出并修改代码，但长期的软件自我改进不只需要代码生成，还需要一个稳定的内核来管理整个进化闭环：
+## 它做什么
 
-- 定义目标项目里的“改进”到底意味着什么；
-- 在影响已接受分支之前隔离每一次实验；
-- 用可复现的标准评估候选变更；
-- 只晋升通过评估的候选结果；
-- 记录每次实验发生了什么、为什么接受或拒绝。
+把 Evolution Kernel 指向任意 git 仓库，给它一个可衡量的目标，它就跑起一个闭环：
 
-Evolution Kernel 将这个闭环做成一个小而可检查的运行时。
+| 步骤 | 发生了什么 |
+|:---:|---|
+| 🔍 **观察** | 运行你的指标命令——采集当前状态（胜率、延迟、报错数……） |
+| 🧠 **规划** | LLM 读取指标 + 历史轮次记录，生成一个具体的改进方案 |
+| 🔨 **执行** | Coding agent（Aider 或 Claude Code）在隔离的 git worktree 里实施方案 |
+| ⚖️ **评估** | 重新运行指标；LLM 判断接受还是拒绝 |
+| ✅ **提交 / 回滚** | 接受 → 在 `evolution/accepted` 上留下真实的 git commit。拒绝 → worktree 直接丢弃 |
+| 🔁 **循环** | 重复，直到 `max_iterations`、`max_total_usd` 或 `max_total_tokens` 触发 |
 
-## 进化闭环
+每一次尝试都写入 **ledger**：目标、观察、方案、diff、评估、决策。不依赖内存。任何外部审计者——或未来的你——都能从 ledger 单独复盘每一个决定。
+
+---
+
+## 快速上手
+
+```bash
+# 1. 安装
+pip install evolution-kernel
+
+# 2. 描述你的目标
+cat > evolution.yml << 'EOF'
+mission: "让游戏 AI 对内置对手的胜率达到 60% 以上"
+
+evidence_sources:
+  - type: shell
+    command: "python3 scripts/tournament.py --games 20 --json"
+
+mutation_scope:
+  allowed_paths: ["ai/"]
+
+hard_stops:
+  max_iterations: 30
+  max_consecutive_failures: 4
+  max_total_usd: 3.00
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+coding_agent:
+  tool: aider
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
+EOF
+
+# 3. 跑起来，放着不管
+evolution-kernel --config evolution.yml --repo /path/to/game --ledger /tmp/ledger --loop
+```
+
+---
+
+## 看它实际运行
+
+### 游戏 AI 胜率从 35% 进化到 72%——隔夜完成，无人值守
+
+```
+进化前   ███░░░░░░░░░  35% 胜率   （20 局输 13 局）
+进化后   ███████░░░░░  72% 胜率   （20 局赢 14 局）
+
+共 9 轮 · 花费 $2.14 · 你的时间投入：0 分钟
+```
+
+循环逐轮发生的事情：
+
+```
+第 1 轮   观察: 胜率 35%
+  规划    → "当前 AI 只会贪心取分，没有前瞻——加入 2 层 minimax 搜索"
+  执行    → aider 重写 ai/strategy.py（改了 68 行）
+  评估    → 胜率 51%  ▲+16 — 接受
+  提交      a3f1c9e  "ai: 加入 minimax（35→51% 胜率）"
+
+第 2 轮   观察: 胜率 51%
+  规划    → "minimax 没处理残局——加入位置评估权重"
+  执行    → aider 新增 ai/eval_weights.py
+  评估    → 胜率 58%  ▲+7 — 接受
+  提交      8b2de01  "ai: 位置权重（51→58%）"
+
+第 3 轮   观察: 胜率 58%
+  规划    → "加入 alpha-beta 剪枝以搜索更深"
+  执行    → aider 修改 ai/strategy.py
+  评估    → 胜率 56%  ▼-2 — 拒绝   连续失败次数: 1
+  回滚      worktree 已丢弃 · 主分支没有任何变化
+
+第 4 轮   观察: 胜率 58%  ← 历史记录显示第 3 轮 alpha-beta 失败
+  规划    → "alpha-beta 导致了回退；改为根据失败模式分析调整残局权重"
+  执行    → aider 调整 ai/eval_weights.py
+  评估    → 胜率 67%  ▲+9 — 接受
+  提交      2c9af44  "ai: 残局权重调优（58→67%）"
+
+...
+
+第 9 轮   观察: 胜率 72%
+  评估    → 72%——目标 60% 已超越——接受
+  提交      9d7b321  "ai: 最终调优（70→72%）"
+
+{"halted": true, "reason": "max_iterations reached", "iterations": 30, "total_usd": 2.14, "total_tokens": 634000}
+```
+
+> **第 3 轮是关键。** alpha-beta 剪枝让结果变*更差*，系统拒绝了这次变更，代码库保持不动。第 4 轮展示了 LLM 读取了拒绝历史并换了思路。这就是"有记忆"在实际中的含义——不会把同样的错误答案猜两遍。
+
+---
+
+## Ledger：完整的审计链
+
+```
+ledger/
+  .evolution_state.json       ← 预算计数器，进程重启后依然有效
+  runs/
+    0001/
+      config.json             ← 你的 evolution.yml 完整快照
+      observation.json        ← evidence_sources 命令的原始输出
+      plan.json               ← LLM 方案：摘要 · 步骤 · 预期改进
+      patch.diff              ← 执行器实际应用的 diff
+      candidate_commit.txt    ← 沙箱 commit 的 git SHA
+      evaluation.json         ← 评估结果 + 指标 + cost_usd + tokens_used
+      decision.json           ← 接受 / 拒绝 + 原因
+      reflection.json         ← 注入下一轮历史的一行摘要
+    0002/  ...
+  halted/
+    20260501T120000Z.json     ← 任何 hard stop 触发时写入
+```
+
+回滚一个 session 的所有变更：
+
+```bash
+git checkout evolution/accepted
+git reset --hard <baseline-sha>   # 每次接受的变更都是一个具名 commit
+```
+
+---
+
+## 架构
 
 ```mermaid
 flowchart LR
-    Goal[Goal] --> Governor[Governor]
-    Governor --> Planner[Planner]
-    Planner --> Plan[plan.json]
-    Plan --> Executor[Executor]
-    Executor --> Candidate[Sandbox candidate]
-    Candidate --> Evaluator[Evaluator]
-    Evaluator --> Eval[evaluation.json]
-    Eval --> Governor
-    Governor --> Accepted[evolution/accepted]
-    Governor --> Ledger[Ledger]
+    Config[evolution.yml] --> Governor
+
+    subgraph loop ["↻  循环，直到 hard stop 触发"]
+        direction LR
+        Governor -->|"planner_input.json\n目标 · 观察 · 历史"| Planner["🧠 规划器\nLLM"]
+        Planner -->|plan.json| Executor["🔨 执行器\nAider / Claude Code"]
+        Executor -->|patch in git worktree| Evaluator["⚖️ 评估器\nLLM + shell"]
+        Evaluator -->|evaluation.json| Governor
+    end
+
+    Governor -->|"接受 → git commit"| Branch["evolution/accepted"]
+    Governor -->|"拒绝 → 丢弃"| Ledger[📁 Ledger]
+    Governor --> Ledger
 ```
 
-## 首个优化对象
+**Governor 故意设计得"笨"。** 它是纯编排逻辑——零 LLM 调用。所有智能都在三个角色脚本里。换掉任何一个角色，Governor 只关心它读写的 JSON 文件。
 
-Evolution Kernel 的定位是优化**任何**软件项目。它第一个正在优化的项目是 **Token-Ignition**，具体对象是 Token-Ignition 的后端评估器。
+**角色之间通过文件通信，不共享内存。** 规划器不直接和执行器说话，评估器看不到执行器的自我评价。唯一的共享状态是 ledger。
 
-因此，Token-Ignition 是第一个优化对象和参考适配器，不是 Evolution Kernel 的硬依赖。它用来验证这个内核能否安全、确定性地进化一个真实代码库，同时保持运行时足够小。
+---
 
-## 当前状态
+## 当前能力
 
-当前 v0 版本已经实现了基础运行时：
+| 功能 | 状态 |
+|---|:---:|
+| 多轮 LLM 循环，带记忆（历史注入） | ✅ |
+| 预算保护：`max_total_usd`、`max_total_tokens` | ✅ |
+| 迭代次数 / 连续失败次数 hard stop | ✅ |
+| 完整 ledger 审计链（进程重启后不丢失） | ✅ |
+| git worktree 沙箱——每次尝试完全隔离 | ✅ |
+| Scope 强制校验——`allowed_paths` 外的改动自动拒绝 | ✅ |
+| 配置驱动：随时切换 LLM 提供商、模型、coding agent | ✅ |
+| Aider 和 Claude Code executor 支持 | ✅ |
+| Anthropic 和 OpenAI 规划器 / 评估器支持 | ✅ |
+| 目标评估器——当 mission 完成时自动停止 | 🔧 PR #5 |
+| k 路并行探索（FunSearch / AlphaEvolve 模式） | 🔧 PR #6 |
+| 进程级沙箱（firejail / bwrap），面向生产环境 | 🔧 PR #7 |
 
-| 模块 | 当前已实现 |
-| --- | --- |
-| Governor | 确定性编排 planning、execution、evaluation、promotion、rollback 和 ledger 更新。 |
-| Sandbox | 基于 Git worktree 的实验隔离。候选变更只有被晋升后才会影响已接受分支。 |
-| 角色交接 | `planner`、`executor`、`evaluator` 作为隔离命令运行，并通过 JSON 文件通信。 |
-| 晋升模型 | 被接受的候选结果推进本地 `evolution/accepted` 分支；被拒绝的实验只保留记录，不推进该分支。 |
-| 首个适配器 | Token-Ignition 适配器，包含用于评估器进化的手写 golden set。 |
+---
 
-## 目前还没有做什么
+## 配置参考
 
-| 尚未完成 | 为什么重要 |
-| --- | --- |
-| LLM-native planner/executor | 当前测试使用 fixture 脚本；真实 agent 接入是下一步。 |
-| 更强的进程/容器级沙箱 | Git worktree 能隔离文件，但 executor 和 evaluator 的运行隔离还应进一步增强。 |
-| 多目标适配器框架 | Token-Ignition 是第一个目标；还需要更多适配器来证明通用性。 |
-| 并行进化分支 | v0 目前聚焦单一 accepted 分支和简单晋升路径。 |
+```yaml
+# 必填——"更好"对你的项目意味着什么
+mission: "让游戏 AI 对内置对手的胜率达到 60% 以上"
 
-## Roadmap
+# 如何衡量当前状态
+evidence_sources:
+  - type: shell         # stdout 写入 observation.json
+    command: "python3 scripts/tournament.py --games 20 --json"
+  - type: file          # 文件内容写入 observation.json
+    path: "metrics.json"
 
-- [ ] 增加 LLM 驱动的 planner 和 executor 实现。
-- [ ] 为 executor 和 evaluator 增加更强的沙箱隔离。
-- [ ] 将适配器接口从 Token-Ignition 推广为通用接口。
-- [ ] 增加多个不同类型项目的 examples。
-- [ ] 支持并行进化分支和更丰富的合并策略。
-- [ ] 改进 ledger 历史、晋升决策、拒绝候选的报告能力。
+# 只有这些路径下的文件允许被修改
+mutation_scope:
+  allowed_paths:
+    - "ai/"             # 不在列表里的改动自动拒绝
 
-## 文档
+# 何时停止
+hard_stops:
+  max_iterations: 30            # 总轮数
+  max_consecutive_failures: 4   # 连续拒绝多少次触发停止
+  max_total_usd: 3.00           # 0 = 不限制
+  max_total_tokens: 0           # 0 = 不限制
 
-- [协议](docs/protocol.md)
-- [Token-Ignition 首个任务](docs/token-ignition-first-task.md)
+# 规划器和评估器使用的 LLM
+llm:
+  provider: anthropic           # anthropic | openai
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+# 执行器使用的 coding agent
+coding_agent:
+  tool: aider                   # aider | claude-code
+
+# 规划器每轮能看到多少轮历史
+history:
+  max_entries: 10
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
+```
+
+**切换到 OpenAI：**
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+```
+
+**切换到 Claude Code：**
+```yaml
+coding_agent:
+  tool: claude-code
+```
+
+---
+
+## CLI
+
+```bash
+# 循环运行直到 hard stop 触发（推荐）
+evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger --loop
+
+# 只跑一轮
+evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger
+
+# 触发 halt 后重置预算计数器
+evolution-kernel --ledger /tmp/ledger --reset
+```
+
+退出码：`0` 正常结束 · `3` 被 hard stop 触发
+
+---
+
+## 安装
+
+```bash
+pip install evolution-kernel
+```
+
+从源码安装（唯一运行时依赖：PyYAML）：
+
+```bash
+git clone https://github.com/Protocol-zero-0/evolution-kernel.git
+cd evolution-kernel
+pip install -e .
+```
+
+需要 Python 3.10 或更高版本。
+
+---
 
 ## 运行测试
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 adapters/token_ignition/evaluate_golden_cases.py
+python3 -m pytest tests/ -v
 ```
 
-## CLI 形状
+39 个测试 · 不需要网络连接 · 角色脚本由轻量 fixture 替代。
 
-YAML 配置模式（MVP 主入口 — 包含 observer + scope + hard stops）：
+---
 
-```bash
-python3 -m evolution_kernel.cli \
-  --config /path/to/evolution.yml \
-  --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger
+## 自己写角色脚本
+
+每个角色是一个普通的可执行程序，接收三个参数：
+
+```
+--input    <路径>    Governor 为这个角色准备的 JSON
+--output   <路径>    角色退出前必须写入的 JSON
+--worktree <路径>    隔离 git 沙箱的 checkout 路径
 ```
 
-旧版直接传参模式（保留以兼容原始的 golden-case 测试）：
+`roles/planner.py`、`roles/executor.sh`、`roles/evaluator.py` 是参考实现。复制并修改它们，或者完全替换成 shell 脚本、Docker 调用——任何能读 `--input`、写 `--output` 的东西都行。
 
-```bash
-python3 -m evolution_kernel.cli \
-  --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --goal /path/to/goal.json \
-  --planner python3 /path/to/planner.py \
-  --executor python3 /path/to/executor.py \
-  --evaluator python3 /path/to/evaluator.py
+---
+
+## 项目结构
+
+```
+evolution_kernel/   约 1,200 行运行时（Governor · Observer · HardStops · Config · CLI）
+roles/              参考版规划器、执行器、评估器
+examples/           demo 目标仓库 + 可直接运行的 evolution.yml
+docs/               协议文档
+tests/              39 个单元 + 验收测试
 ```
 
-熔断后清空持久化的 hard-stop 状态（不会触发一次 run）：
+---
 
-```bash
-python3 -m evolution_kernel.cli --reset --ledger /path/to/evolution-ledger
-```
+## 许可证
 
-每个角色命令都会收到：
-
-```text
---input <json>
---output <json>
---worktree <sandbox path>
-```
-
-## MVP 使用方式（observer + scope + hard stops 闭环）
-
-本 MVP 串起协议描述的完整闭环：
-`config -> observe -> plan/execute -> evaluate -> accept/reject -> ledger`。
-
-### 1. 编写 `evolution.yml`
-
-```yaml
-mission: "Add a minimal in-scope mutation so the evaluator accepts."
-
-evidence_sources:
-  - type: file
-    path: metrics.json
-  - type: shell
-    command: "bash scripts/status.sh"
-
-mutation_scope:
-  allowed_paths:
-    - "src/"
-
-hard_stops:
-  max_iterations: 3
-  max_consecutive_failures: 2
-
-roles:
-  planner:   ["python3", "bots/planner.py"]
-  executor:  ["python3", "bots/executor.py"]
-  evaluator: ["python3", "bots/evaluator.py"]
-```
-
-`evidence_sources` 在 planner 运行前被读入 `observation.json`。
-`mutation_scope.allowed_paths` 在 executor 提交后被强制校验 —— 范围之外
-的任何改动都会被自动 reject，`decision.reason` 写为 `scope_violation: ...`。
-`hard_stops` 通过 `<ledger>/.evolution_state.json` 跨 run 持久化，循环卡死
-时即使重启 CLI 也会被拦截。
-
-### 2. 跑一次实验
-
-```bash
-# 一次性：安装包（PyYAML 是唯一运行时依赖，已在 pyproject.toml 声明）
-python3 -m pip install -e .
-
-# 一次性：准备目标仓库
-bash examples/demo_target/setup.sh
-
-python3 -m evolution_kernel.cli \
-  --config examples/evolution.yml \
-  --repo  examples/demo_target \
-  --ledger /tmp/ek-ledger
-```
-
-> 上面 `pip install -e .` 每个环境只需要做一次。之后那三行 CLI 命令是
-> 干净 checkout 下可复现的。
-
-需要重置熔断器从头来过：
-
-```bash
-python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-ledger
-```
-
-### 3. 检查 ledger
-
-每一次 run 都会在 `<ledger>/runs/<run_id>/` 下产出完整的证据链：
-
-```text
-goal.json              # 仅 legacy 模式
-config.json            # 完整 YAML 配置快照（full 模式）
-observation.json       # planning 之前 observer 收集到的证据
-plan.json              # planner 输出
-patch.diff             # baseline 与 candidate commit 之间的 diff
-candidate_commit.txt   # sandbox 中 candidate commit 的 hash
-evaluation.json        # evaluator 输出（scope_violation 时由 Governor 合成）
-decision.json          # accept / reject + 原因
-reflection.json        # 决策后的总结
-```
-
-### 4. 验收标准 → 测试映射
-
-issue #1 中六条验收标准在 `tests/test_acceptance.py` 中各对应一个测试：
-
-| # | 验收要求 | 测试 |
-| - | --- | --- |
-| 1 | accept 推进 `evolution/accepted` | `test_accept_advances_accepted_branch` |
-| 2 | reject 不推进 | `test_reject_does_not_advance_accepted_branch` |
-| 3 | 强制 mutation scope + 记录违规 | `test_scope_violation_is_rejected_and_logged` |
-| 4 | observer 写出 `observation.json`（file + shell） | `test_observer_writes_observation_with_file_and_shell` |
-| 5 | hard stops 触发熔断后 `--reset` 恢复 | `test_hard_stop_blocks_then_reset_allows_via_cli` |
-| 6 | ledger 包含全部必需 artifact | `test_ledger_contains_all_required_artifacts` |
-
-此外 `tests/test_scope.py` 单独钉死了 `allowed_paths` matcher 的边界语义
-（递归 / 精确匹配 / 兄弟名碰撞 / `..` 逃逸 / 空作用域 等）。
-
-### 本 MVP 有意**不做**的内容
-
-按照 issue 的“不要做”清单：
-
-- 不做 LLM / agent-swarm / dashboard。
-- 不做 PR router，不做自动 merge 到上游 `main`。
-- 不做多目标适配器框架 —— 唯一示例目标是 `examples/demo_target/`。
-- 不做超出 git worktree 的容器/进程级沙箱。
-
-这些都是在内核本身被信任之后才适合做的下一步。
+MIT — 见 [LICENSE](LICENSE)。
