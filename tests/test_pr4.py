@@ -246,7 +246,7 @@ roles:
 
     def test_loop_runs_until_max_iterations(self):
         rc = self._run_cli("--loop")
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 3)  # halted → exit 3
         # max_iterations=3, so 3 run dirs should exist
         runs = list((Path(self.ledger) / "runs").iterdir())
         self.assertEqual(len(runs), 3)

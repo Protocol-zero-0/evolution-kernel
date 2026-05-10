@@ -60,7 +60,10 @@ case "$TOOL" in
 esac
 
 CHANGED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-python3 -c "
-import json
-print(json.dumps({'changed_files': $CHANGED, 'tool': '$TOOL', 'summary': '''$SUMMARY'''}, indent=2))
-" > "$OUTPUT"
+# Use jq to safely encode strings — avoids shell-quoting bugs when LLM output
+# contains quotes, backslashes, or other special characters.
+jq -n \
+  --argjson changed "$CHANGED" \
+  --arg tool "$TOOL" \
+  --arg summary "$SUMMARY" \
+  '{"changed_files": $changed, "tool": $tool, "summary": $summary}' > "$OUTPUT"

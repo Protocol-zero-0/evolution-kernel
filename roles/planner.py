@@ -109,9 +109,13 @@ Respond with ONLY a JSON object containing:
         sys.exit(1)
 
     m = re.search(r"\{.*\}", text, re.DOTALL)
+    plan = None
     if m:
-        plan = json.loads(m.group())
-    else:
+        try:
+            plan = json.loads(m.group())
+        except json.JSONDecodeError:
+            pass
+    if plan is None:
         plan = {
             "summary": text[:200],
             "steps": [text],

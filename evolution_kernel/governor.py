@@ -185,12 +185,20 @@ class Governor:
                 self._git("branch", "-f", ACCEPTED_BRANCH, candidate_commit)
 
             self._record_accepted_commit()
+            # Pull plan summary for history — more informative than decision.reason.
+            plan_summary = ""
+            try:
+                plan_data = self._read_json(run_dir / "plan.json")
+                plan_summary = str(plan_data.get("summary", ""))
+            except Exception:
+                pass
             self._write_json(
                 run_dir / "reflection.json",
                 {
                     "run_id": run_id,
                     "accepted": decision.accepted,
                     "reason": decision.reason,
+                    "plan_summary": plan_summary,
                     "metrics": evaluation.get("metrics", {}),
                     "created_at": self._now(),
                 },
@@ -221,13 +229,12 @@ class Governor:
                 entries.append({
                     "run_id": data.get("run_id", run_dir.name),
                     "accepted": data.get("accepted", False),
-                    "summary": data.get("reason", ""),
+                    "summary": data.get("plan_summary") or data.get("reason", ""),
                     "metrics": data.get("metrics", {}),
                 })
             except Exception:
                 pass
-        n = self.history_max_entries
-        return entries[-n:] if n > 0 else entries
+        return entries[-self.history_max_entries:]
 
     def _decide(
         self,

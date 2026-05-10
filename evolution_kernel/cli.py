@@ -122,8 +122,7 @@ def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
         return 3
 
     result = governor.run_once(goal, run_id=args.run_id)
-    cost_usd = float(result.evaluation.get("cost_usd", 0.0))
-    tokens_used = int(result.evaluation.get("tokens_used", 0))
+    cost_usd, tokens_used = _safe_cost(result.evaluation)
     new_state = hard_stops.record_outcome(
         state,
         accepted=result.decision.accepted,
@@ -158,11 +157,10 @@ def _run_loop(
         if not allowed:
             _record_halted(args.ledger, state, why)
             print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
-            return 0
+            return 3
 
         result = governor.run_once(goal)
-        cost_usd = float(result.evaluation.get("cost_usd", 0.0))
-        tokens_used = int(result.evaluation.get("tokens_used", 0))
+        cost_usd, tokens_used = _safe_cost(result.evaluation)
         new_state = hard_stops.record_outcome(
             state,
             accepted=result.decision.accepted,
@@ -176,7 +174,8 @@ def _run_loop(
         hard_stops.save_state(args.ledger, new_state)
         _print_result(result, halted=new_state.halted, halt_reason=new_state.halt_reason)
         if new_state.halted:
-            return 0
+            _record_halted(args.ledger, new_state, new_state.halt_reason)
+            return 3
 
 
 def _run_legacy(args: argparse.Namespace) -> int:
@@ -197,6 +196,19 @@ def _run_legacy(args: argparse.Namespace) -> int:
     result = governor.run_once(goal, run_id=args.run_id)
     _print_result(result)
     return 0
+
+
+def _safe_cost(evaluation: dict) -> tuple[float, int]:
+    """Extract cost fields defensively; return (0.0, 0) on any parse error."""
+    try:
+        cost_usd = float(evaluation.get("cost_usd") or 0.0)
+    except (TypeError, ValueError):
+        cost_usd = 0.0
+    try:
+        tokens_used = int(evaluation.get("tokens_used") or 0)
+    except (TypeError, ValueError):
+        tokens_used = 0
+    return cost_usd, tokens_used
 
 
 def _record_halted(

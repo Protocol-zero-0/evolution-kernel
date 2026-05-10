@@ -223,8 +223,16 @@ def _parse_hard_stops(value: Any) -> HardStops:
     for label, n in (("max_iterations", max_iterations), ("max_consecutive_failures", max_failures)):
         if not isinstance(n, int) or isinstance(n, bool) or n < 1:
             raise ConfigError(f"`hard_stops.{label}` must be a positive integer, got {n!r}")
-    max_total_usd = float(value.get("max_total_usd", 0.0))
-    max_total_tokens = int(value.get("max_total_tokens", 0))
+    usd_raw = value.get("max_total_usd", 0.0)
+    tok_raw = value.get("max_total_tokens", 0)
+    try:
+        max_total_usd = float(usd_raw)
+    except (TypeError, ValueError):
+        raise ConfigError(f"`hard_stops.max_total_usd` must be a number, got {usd_raw!r}")
+    try:
+        max_total_tokens = int(tok_raw)
+    except (TypeError, ValueError):
+        raise ConfigError(f"`hard_stops.max_total_tokens` must be an integer, got {tok_raw!r}")
     if max_total_usd < 0:
         raise ConfigError("`hard_stops.max_total_usd` must be >= 0")
     if max_total_tokens < 0:
