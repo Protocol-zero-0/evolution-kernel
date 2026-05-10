@@ -52,6 +52,7 @@ class Governor:
         evidence_sources: Sequence[EvidenceSource] = (),
         allowed_paths: Sequence[str] = (),
         config_snapshot: Mapping[str, Any] | None = None,
+        history_max_entries: int = 10,
     ) -> None:
         self.target_repo = Path(target_repo).resolve()
         self.ledger_dir = Path(ledger_dir).resolve()
@@ -61,6 +62,7 @@ class Governor:
         self.evidence_sources = tuple(evidence_sources)
         self.allowed_paths = tuple(allowed_paths)
         self.config_snapshot = dict(config_snapshot) if config_snapshot else None
+        self.history_max_entries = history_max_entries
 
     def run_once(self, goal: Mapping[str, Any], run_id: str | None = None) -> RunResult:
         self._ensure_git_repo()
@@ -96,6 +98,7 @@ class Governor:
                     "ledger_dir": str(self.ledger_dir),
                     "observation_path": str(observation_path),
                     "allowed_paths": list(self.allowed_paths),
+                    "history": self._build_history(),
                 },
             )
             self._run_role(self.planner, run_dir / "planner_input.json", run_dir / "plan.json", worktree)
@@ -202,6 +205,29 @@ class Governor:
             # Keep the experiment branch and ledger, but remove the mutable checkout.
             if worktree.exists():
                 self._git("worktree", "remove", "--force", str(worktree))
+
+    def _build_history(self) -> list[dict]:
+        """Scan ledger for past run reflections; return most recent N entries."""
+        runs_dir = self.ledger_dir / "runs"
+        if not runs_dir.exists():
+            return []
+        entries = []
+        for run_dir in sorted(runs_dir.iterdir()):
+            reflection = run_dir / "reflection.json"
+            if not reflection.exists():
+                continue
+            try:
+                data = self._read_json(reflection)
+                entries.append({
+                    "run_id": data.get("run_id", run_dir.name),
+                    "accepted": data.get("accepted", False),
+                    "summary": data.get("reason", ""),
+                    "metrics": data.get("metrics", {}),
+                })
+            except Exception:
+                pass
+        n = self.history_max_entries
+        return entries[-n:] if n > 0 else entries
 
     def _decide(
         self,

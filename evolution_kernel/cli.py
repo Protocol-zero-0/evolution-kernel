@@ -1,18 +1,15 @@
 """Evolution Kernel command-line entry point.
 
-The CLI shape mirrors the suggested form in the project's MVP brief:
+Usage:
 
-    python -m evolution_kernel.cli \
-        --config examples/evolution.yml \
-        --repo /path/to/target-repo \
-        --ledger /tmp/evolution-ledger
+    # Run once:
+    evolution-kernel --config examples/evolution.yml --repo /path/to/repo --ledger /tmp/ledger
 
-Two extra modes are supported alongside this primary form:
+    # Run until hard stops trigger (multi-round loop):
+    evolution-kernel --config examples/evolution.yml --repo /path/to/repo --ledger /tmp/ledger --loop
 
-* ``--goal goal.json`` runs the legacy direct-flags loop (no observer / scope /
-  hard-stops) so the original golden-case tests keep working unchanged.
-* ``--reset`` clears the persisted hard-stop state for the given ledger and
-  exits — used to re-enable a halted loop after a human review.
+    # Reset hard-stop state:
+    evolution-kernel --ledger /tmp/ledger --reset
 """
 
 from __future__ import annotations
@@ -32,7 +29,7 @@ from .governor import Governor, RoleCommand
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="evolution-kernel",
-        description="Run one Evolution Kernel experiment under MVP constraints.",
+        description="Run Evolution Kernel experiments.",
     )
     parser.add_argument("--repo", help="Target git repository (required unless --reset)")
     parser.add_argument("--ledger", required=True, help="Ledger directory")
@@ -43,6 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--executor", nargs="+", help="Executor argv (overrides config.roles.executor)")
     parser.add_argument("--evaluator", nargs="+", help="Evaluator argv (overrides config.roles.evaluator)")
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--loop", action="store_true", help="Run until hard stops trigger (multi-round).")
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -75,7 +73,7 @@ def _cmd_reset(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
+def _make_governor(args: argparse.Namespace, cfg: EvolutionConfig) -> Governor:
     planner = tuple(args.planner) if args.planner else cfg.roles.planner
     executor = tuple(args.executor) if args.executor else cfg.roles.executor
     evaluator = tuple(args.evaluator) if args.evaluator else cfg.roles.evaluator
@@ -84,23 +82,8 @@ def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
             "error: planner/executor/evaluator must be defined in config.roles or via flags",
             file=sys.stderr,
         )
-        return 2
-
-    state = hard_stops.load_state(args.ledger)
-    allowed, why = hard_stops.precheck(
-        state,
-        cfg.hard_stops.max_iterations,
-        cfg.hard_stops.max_consecutive_failures,
-    )
-    if not allowed:
-        # Even when blocked, leave an audit record so the ledger covers every
-        # invocation, not just the ones that actually ran the loop.
-        _record_halted(args.ledger, state, why)
-        print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
-        return 3
-
-    goal = {"name": cfg.mission, "objective": cfg.mission}
-    governor = Governor(
+        raise SystemExit(2)
+    return Governor(
         target_repo=args.repo,
         ledger_dir=args.ledger,
         planner=RoleCommand(list(planner)),
@@ -109,17 +92,91 @@ def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
         evidence_sources=cfg.evidence_sources,
         allowed_paths=cfg.mutation_scope.allowed_paths,
         config_snapshot=cfg.raw,
+        history_max_entries=cfg.history.max_entries,
     )
+
+
+def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
+    try:
+        governor = _make_governor(args, cfg)
+    except SystemExit as e:
+        return int(e.code)
+
+    goal = {"name": cfg.mission, "objective": cfg.mission}
+
+    if args.loop:
+        return _run_loop(args, cfg, governor, goal)
+
+    # Single run
+    state = hard_stops.load_state(args.ledger)
+    allowed, why = hard_stops.precheck(
+        state,
+        cfg.hard_stops.max_iterations,
+        cfg.hard_stops.max_consecutive_failures,
+        max_total_usd=cfg.hard_stops.max_total_usd,
+        max_total_tokens=cfg.hard_stops.max_total_tokens,
+    )
+    if not allowed:
+        _record_halted(args.ledger, state, why)
+        print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
+        return 3
+
     result = governor.run_once(goal, run_id=args.run_id)
+    cost_usd = float(result.evaluation.get("cost_usd", 0.0))
+    tokens_used = int(result.evaluation.get("tokens_used", 0))
     new_state = hard_stops.record_outcome(
         state,
         accepted=result.decision.accepted,
         max_iterations=cfg.hard_stops.max_iterations,
         max_consecutive_failures=cfg.hard_stops.max_consecutive_failures,
+        cost_usd=cost_usd,
+        tokens_used=tokens_used,
+        max_total_usd=cfg.hard_stops.max_total_usd,
+        max_total_tokens=cfg.hard_stops.max_total_tokens,
     )
     hard_stops.save_state(args.ledger, new_state)
     _print_result(result, halted=new_state.halted, halt_reason=new_state.halt_reason)
     return 0
+
+
+def _run_loop(
+    args: argparse.Namespace,
+    cfg: EvolutionConfig,
+    governor: Governor,
+    goal: dict,
+) -> int:
+    """Run until hard stops trigger. Each iteration saves state immediately."""
+    while True:
+        state = hard_stops.load_state(args.ledger)
+        allowed, why = hard_stops.precheck(
+            state,
+            cfg.hard_stops.max_iterations,
+            cfg.hard_stops.max_consecutive_failures,
+            max_total_usd=cfg.hard_stops.max_total_usd,
+            max_total_tokens=cfg.hard_stops.max_total_tokens,
+        )
+        if not allowed:
+            _record_halted(args.ledger, state, why)
+            print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
+            return 0
+
+        result = governor.run_once(goal)
+        cost_usd = float(result.evaluation.get("cost_usd", 0.0))
+        tokens_used = int(result.evaluation.get("tokens_used", 0))
+        new_state = hard_stops.record_outcome(
+            state,
+            accepted=result.decision.accepted,
+            max_iterations=cfg.hard_stops.max_iterations,
+            max_consecutive_failures=cfg.hard_stops.max_consecutive_failures,
+            cost_usd=cost_usd,
+            tokens_used=tokens_used,
+            max_total_usd=cfg.hard_stops.max_total_usd,
+            max_total_tokens=cfg.hard_stops.max_total_tokens,
+        )
+        hard_stops.save_state(args.ledger, new_state)
+        _print_result(result, halted=new_state.halted, halt_reason=new_state.halt_reason)
+        if new_state.halted:
+            return 0
 
 
 def _run_legacy(args: argparse.Namespace) -> int:
@@ -155,8 +212,9 @@ def _record_halted(
         "reason": reason,
         "iterations": state.iterations,
         "consecutive_failures": state.consecutive_failures,
+        "total_usd": state.total_usd,
+        "total_tokens": state.total_tokens,
     }
-    # Suffix with sequence number to avoid collisions within the same second.
     base = halted_dir / f"{ts}.json"
     target = base
     n = 1

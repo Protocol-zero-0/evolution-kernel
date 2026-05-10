@@ -1,5 +1,19 @@
 mission: "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints."
 
+# LLM configuration — all role scripts read this via config.json in the run dir.
+llm:
+  provider: anthropic              # anthropic | openai
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY   # name of the env var holding the key
+
+# Coding agent used by roles/executor.sh
+coding_agent:
+  tool: aider                      # aider | claude-code
+
+# How many past run reflections to inject into each planner call
+history:
+  max_entries: 10
+
 evidence_sources:
   - type: file
     path: "metrics.json"
@@ -11,10 +25,12 @@ mutation_scope:
     - "src/"
 
 hard_stops:
-  max_iterations: 3
-  max_consecutive_failures: 2
+  max_iterations: 10
+  max_consecutive_failures: 3
+  max_total_usd: 1.00              # stop if total LLM spend reaches $1
+  max_total_tokens: 500000         # stop if total tokens reaches 500k
 
 roles:
-  planner: ["python3", "bots/planner.py"]
-  executor: ["python3", "bots/executor.py"]
-  evaluator: ["python3", "bots/evaluator.py"]
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
