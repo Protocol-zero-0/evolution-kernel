@@ -152,8 +152,7 @@ Baseline: 32.4%
 
 [gen 21] STOP — 4 generations with no significant improvement
 
-{"halted": true, "reason": "max_consecutive_failures", "iterations": 21,
- "total_usd": 34.10, "total_tokens": 9841200}
+{"halted": true, "reason": "max_consecutive_failures reached (4)"}
 ```
 
 ```
@@ -170,12 +169,16 @@ Final:  32.4% → 76.4%   same tier as Mistral Medium 3.5 (77.6%), Qwen3.6-27B (
 
 ```
 ledger/
-  .evolution_state.json       ← budget counters; survives restarts
+  .evolution_state.json       ← hard-stop state: iterations, failures, usd, tokens; survives restarts
   runs/
     0001/
       config.json             ← full snapshot of your evolution.yml
       observation.json        ← raw output of your evidence_sources commands
+      planner_input.json      ← goal + observation + history fed to planner
       plan.json               ← LLM plan: summary · steps · expected_improvement
+      executor_input.json     ← plan + worktree path fed to executor
+      executor_output.json    ← executor result
+      evaluator_input.json    ← goal + patch + observation fed to evaluator
       patch.diff              ← exact diff the executor applied
       candidate_commit.txt    ← git SHA of the sandbox commit
       evaluation.json         ← verdict + metrics + cost_usd + tokens_used
@@ -183,7 +186,7 @@ ledger/
       reflection.json         ← one-line summary injected into the next round
     0002/  ...
   halted/
-    20260501T120000Z.json     ← written when any hard stop fires
+    20260501T120000Z.json     ← full run stats (iterations, usd, tokens) written when any hard stop fires
 ```
 
 To undo every change from a session:
@@ -243,19 +246,19 @@ flowchart LR
 
 ```yaml
 # Required — what "better" means for your project
-mission: "Evolve the game AI to win at least 60% of games"
+mission: "Improve the agent harness so the model scores above 70% on the benchmark"
 
 # How to measure the current state
 evidence_sources:
   - type: shell         # stdout goes into observation.json
-    command: "python3 scripts/tournament.py --games 20 --json"
+    command: "python3 scripts/run_benchmark.py --sample 50 --json"
   - type: file          # file contents go into observation.json
     path: "metrics.json"
 
 # Only files under these paths may be changed
 mutation_scope:
   allowed_paths:
-    - "ai/"             # changes outside this list are auto-rejected
+    - "src/agent_harness/"   # changes outside this list are auto-rejected
 
 # When to stop
 hard_stops:
@@ -309,7 +312,7 @@ evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledge
 # Single round
 evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger
 
-# Reset budget counters after a halt
+# Reset all hard-stop state (iterations, failures, budget) for a fresh session
 evolution-kernel --ledger /tmp/ledger --reset
 ```
 
