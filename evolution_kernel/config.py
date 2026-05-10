@@ -4,6 +4,17 @@ Loads and validates a small YAML schema:
 
     mission: "free-text statement of intent"
 
+    llm:
+      provider: anthropic        # anthropic | openai
+      model: claude-sonnet-4-6
+      api_key_env: ANTHROPIC_API_KEY
+
+    coding_agent:
+      tool: aider                # aider | claude-code
+
+    history:
+      max_entries: 10
+
     evidence_sources:
       - type: file
         path: "./metrics.json"
@@ -16,8 +27,10 @@ Loads and validates a small YAML schema:
         - "tests/"
 
     hard_stops:
-      max_iterations: 3
-      max_consecutive_failures: 2
+      max_iterations: 10
+      max_consecutive_failures: 3
+      max_total_usd: 1.00        # 0.0 = unlimited
+      max_total_tokens: 500000   # 0 = unlimited
 
 Validation prefers human-readable errors over raw tracebacks so that bad configs
 can be fixed without reading source.
@@ -52,6 +65,8 @@ class MutationScope:
 class HardStops:
     max_iterations: int = 1
     max_consecutive_failures: int = 1
+    max_total_usd: float = 0.0    # 0.0 = unlimited
+    max_total_tokens: int = 0     # 0 = unlimited
 
 
 @dataclass(frozen=True)
@@ -62,12 +77,32 @@ class Roles:
 
 
 @dataclass(frozen=True)
+class LLMConfig:
+    provider: str = "anthropic"          # anthropic | openai
+    model: str = "claude-sonnet-4-6"
+    api_key_env: str = "ANTHROPIC_API_KEY"
+
+
+@dataclass(frozen=True)
+class CodingAgentConfig:
+    tool: str = "aider"                  # aider | claude-code
+
+
+@dataclass(frozen=True)
+class HistoryConfig:
+    max_entries: int = 10
+
+
+@dataclass(frozen=True)
 class EvolutionConfig:
     mission: str
     evidence_sources: tuple[EvidenceSource, ...] = ()
     mutation_scope: MutationScope = field(default_factory=MutationScope)
     hard_stops: HardStops = field(default_factory=HardStops)
     roles: Roles = field(default_factory=Roles)
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    coding_agent: CodingAgentConfig = field(default_factory=CodingAgentConfig)
+    history: HistoryConfig = field(default_factory=HistoryConfig)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -97,6 +132,9 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
     mutation_scope = _parse_mutation_scope(raw.get("mutation_scope", {}))
     hard_stops = _parse_hard_stops(raw.get("hard_stops", {}))
     roles = _parse_roles(raw.get("roles", {}))
+    llm = _parse_llm(raw.get("llm", {}))
+    coding_agent = _parse_coding_agent(raw.get("coding_agent", {}))
+    history = _parse_history(raw.get("history", {}))
 
     return EvolutionConfig(
         mission=mission.strip(),
@@ -104,6 +142,9 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
         mutation_scope=mutation_scope,
         hard_stops=hard_stops,
         roles=roles,
+        llm=llm,
+        coding_agent=coding_agent,
+        history=history,
         raw=dict(raw),
     )
 
@@ -182,4 +223,53 @@ def _parse_hard_stops(value: Any) -> HardStops:
     for label, n in (("max_iterations", max_iterations), ("max_consecutive_failures", max_failures)):
         if not isinstance(n, int) or isinstance(n, bool) or n < 1:
             raise ConfigError(f"`hard_stops.{label}` must be a positive integer, got {n!r}")
-    return HardStops(max_iterations=max_iterations, max_consecutive_failures=max_failures)
+    usd_raw = value.get("max_total_usd", 0.0)
+    tok_raw = value.get("max_total_tokens", 0)
+    try:
+        max_total_usd = float(usd_raw)
+    except (TypeError, ValueError):
+        raise ConfigError(f"`hard_stops.max_total_usd` must be a number, got {usd_raw!r}")
+    try:
+        max_total_tokens = int(tok_raw)
+    except (TypeError, ValueError):
+        raise ConfigError(f"`hard_stops.max_total_tokens` must be an integer, got {tok_raw!r}")
+    if max_total_usd < 0:
+        raise ConfigError("`hard_stops.max_total_usd` must be >= 0")
+    if max_total_tokens < 0:
+        raise ConfigError("`hard_stops.max_total_tokens` must be >= 0")
+    return HardStops(
+        max_iterations=max_iterations,
+        max_consecutive_failures=max_failures,
+        max_total_usd=max_total_usd,
+        max_total_tokens=max_total_tokens,
+    )
+
+
+def _parse_llm(value: Any) -> LLMConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`llm` must be a mapping")
+    provider = value.get("provider", "anthropic")
+    model = value.get("model", "claude-sonnet-4-6")
+    api_key_env = value.get("api_key_env", "ANTHROPIC_API_KEY")
+    for label, v in (("provider", provider), ("model", model), ("api_key_env", api_key_env)):
+        if not isinstance(v, str) or not v.strip():
+            raise ConfigError(f"`llm.{label}` must be a non-empty string")
+    return LLMConfig(provider=provider.strip(), model=model.strip(), api_key_env=api_key_env.strip())
+
+
+def _parse_coding_agent(value: Any) -> CodingAgentConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`coding_agent` must be a mapping")
+    tool = value.get("tool", "aider")
+    if not isinstance(tool, str) or not tool.strip():
+        raise ConfigError("`coding_agent.tool` must be a non-empty string")
+    return CodingAgentConfig(tool=tool.strip())
+
+
+def _parse_history(value: Any) -> HistoryConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`history` must be a mapping")
+    max_entries = value.get("max_entries", 10)
+    if not isinstance(max_entries, int) or isinstance(max_entries, bool) or max_entries < 1:
+        raise ConfigError("`history.max_entries` must be a positive integer")
+    return HistoryConfig(max_entries=max_entries)

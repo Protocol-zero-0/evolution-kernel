@@ -1,242 +1,351 @@
 # Evolution Kernel
 
 <p align="center">
-  <strong>A general-purpose evolution engine for autonomously improving software projects.</strong>
+  <strong>Give an LLM a goal. Watch your repo improve itself. Stop when the budget runs out.</strong>
+</p>
+
+<p align="center">
+  <em>A ~1,200-line Python runtime for autonomous, multi-round code improvement — sandboxed, audited, and fully reversible.</em>
 </p>
 
 <p align="center">
   <a href="README.zh.md">中文</a>
   ·
   <a href="docs/protocol.md">Protocol</a>
-  ·
-  <a href="docs/token-ignition-first-task.md">First Target</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml"><img src="https://github.com/hitome0123/evolution-kernel/actions/workflows/tests.yml/badge.svg?branch=feat/mvp-observer-scope-hardstops" alt="tests"></a>
-  <img src="https://img.shields.io/badge/status-v0%20prototype-orange" alt="Status: v0 prototype">
+  <a href="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml">
+    <img src="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml/badge.svg" alt="tests">
+  </a>
+  <img src="https://img.shields.io/badge/status-v0.2-blue" alt="v0.2">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python >= 3.10">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/runtime-Git%20worktree%20sandbox-purple" alt="Git worktree sandbox">
+  <img src="https://img.shields.io/badge/dep-PyYAML%20only-lightgrey" alt="Single dependency: PyYAML">
 </p>
 
-**Evolution Kernel** is a minimal protocol and runtime for autonomous, self-evolving software systems.
+---
 
-It is not a project-specific automation script. Its purpose is to make software evolution **controlled, reproducible, sandboxed, auditable, and reversible**. Any project can become an optimization target once it can expose a goal, a sandbox, and an evaluator.
+## What it does
 
-## Why It Exists
+Write a YAML file that says what "better" means. Evolution Kernel runs a tight loop:
 
-Modern coding agents can propose and modify code, but long-running software improvement needs more than code generation. It needs a kernel that can:
+1. **Observe** — collect the current metric (coverage %, benchmark score, lint count — whatever your shell command outputs)
+2. **Plan** — an LLM reads the metric and the history of prior attempts, then writes a concrete plan
+3. **Execute** — a coding agent (Aider or Claude Code) applies the plan inside a git worktree sandbox
+4. **Evaluate** — the evaluator re-runs your metric command and decides accept or reject
+5. **Commit or roll back** — accepted changes become a real git commit; rejected ones are discarded
+6. **Loop** — repeat until a budget limit fires (`max_iterations`, `max_total_usd`, `max_total_tokens`)
 
-- define what improvement means for a target project,
-- isolate each experiment before it touches the accepted branch,
-- evaluate candidate changes with repeatable criteria,
-- promote only accepted candidates,
-- keep a ledger of what happened and why.
+Every attempt — accepted or rejected — is written to a structured **ledger** so you can audit exactly what the LLM tried, what changed, and why each round was accepted or rejected.
 
-Evolution Kernel provides that loop as a small, inspectable runtime.
+---
 
-## Evolution Loop
+## Quick Start
+
+```bash
+# 1. Install (single runtime dependency: PyYAML)
+pip install evolution-kernel
+
+# 2. Write a goal config
+cat > evolution.yml << 'EOF'
+mission: "Increase src/ test coverage from 40% to 80%"
+
+evidence_sources:
+  - type: shell
+    command: >
+      python3 -m pytest --cov=src --cov-report=json -q &&
+      python3 -c "import json; d=json.load(open('coverage.json'));
+                  print(f'coverage: {d[\"totals\"][\"percent_covered\"]:.1f}%')"
+
+mutation_scope:
+  allowed_paths: ["tests/"]
+
+hard_stops:
+  max_iterations: 20
+  max_consecutive_failures: 3
+  max_total_usd: 2.00
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+coding_agent:
+  tool: aider
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
+EOF
+
+# 3. Run until the budget fires
+evolution-kernel --config evolution.yml --repo /path/to/your-project --ledger /tmp/ledger --loop
+```
+
+---
+
+## Example: raising test coverage from 40% to 80%
+
+The loop emits one JSON object per round. A realistic session looks like this:
+
+```
+Round 1  observe: coverage 40.2%
+  plan    → "Add unit tests for src/parser.py — parse_tokens is completely uncovered"
+  execute → aider writes tests/test_parser.py (14 new assertions)
+  eval    → coverage 51.7% — ACCEPT
+  commit  → a3f1c9e  "tests: cover parse_tokens (coverage 40→52%)"
+
+Round 2  observe: coverage 51.7%
+  plan    → "Add edge-case tests for src/validator.py, missing branch coverage on error paths"
+  execute → aider extends tests/test_validator.py (+9 tests)
+  eval    → coverage 63.4% — ACCEPT
+  commit  → 8b2de01  "tests: validator edge cases (coverage 52→63%)"
+
+Round 3  observe: coverage 63.4%
+  plan    → "Cover src/formatter.py — currently 0% covered"
+  execute → aider writes tests/test_formatter.py
+  eval    → coverage 63.4% — new test file has wrong import path — REJECT
+  rollback → worktree discarded, main branch unchanged  (consecutive_failures: 1)
+
+Round 4  observe: coverage 63.4%
+  plan    → "tests/test_formatter.py failed due to import error; fix path and retry"
+  execute → aider fixes import in tests/test_formatter.py
+  eval    → coverage 74.8% — ACCEPT
+  commit  → 2c9af44  "tests: formatter coverage, fixed import (coverage 63→75%)"
+
+...
+
+Round 12  observe: coverage 80.1%
+  eval    → coverage 80.1% — threshold reached — ACCEPT
+  commit  → 9d7b321  "tests: final push past 80% target"
+
+{"halted": true, "reason": "max_iterations reached", "iterations": 20, "total_usd": 1.43, "total_tokens": 487201}
+```
+
+Each accepted change is a reversible git commit on the `evolution/accepted` branch. The LLM self-corrected on Round 4 using the rejection history from Round 3 — this is what history injection does.
+
+---
+
+## Ledger structure
+
+Every round writes a full evidence trail. Nothing is stored in memory; an external auditor can reconstruct every decision from the ledger directory alone.
+
+```
+ledger/
+  .evolution_state.json       # persisted counters (iterations, usd, tokens) — survives restarts
+  runs/
+    0001/
+      config.json             # full snapshot of your evolution.yml
+      observation.json        # raw output of your evidence_sources commands
+      plan.json               # LLM plan: summary, steps, expected_improvement
+      patch.diff              # exact diff the executor applied
+      candidate_commit.txt    # git SHA of the sandbox commit
+      evaluation.json         # verdict + metrics + cost_usd + tokens_used
+      decision.json           # accept / reject + reason
+      reflection.json         # one-line summary injected into the next round's history
+    0002/
+      ...
+  halted/
+    20260501T120000Z.json     # written when any hard stop fires
+```
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    Goal[Goal] --> Governor[Governor]
-    Governor --> Planner[Planner]
-    Planner --> Plan[plan.json]
-    Plan --> Executor[Executor]
-    Executor --> Candidate[Sandbox candidate]
-    Candidate --> Evaluator[Evaluator]
-    Evaluator --> Eval[evaluation.json]
-    Eval --> Governor
-    Governor --> Accepted[evolution/accepted]
-    Governor --> Ledger[Ledger]
+    Config[evolution.yml] --> Governor
+
+    subgraph loop ["Loop until hard stop"]
+        direction LR
+        Governor -->|"planner_input.json\n(goal + observation + history)"| Planner["Planner\nLLM"]
+        Planner -->|plan.json| Executor["Executor\nAider / Claude Code"]
+        Executor -->|patch in git worktree| Evaluator["Evaluator\nLLM + shell"]
+        Evaluator -->|evaluation.json| Governor
+    end
+
+    Governor -->|"accept → git commit"| AcceptedBranch[evolution/accepted]
+    Governor -->|"reject → discard worktree"| Ledger[Ledger]
+    Governor --> Ledger
 ```
 
-## First Optimization Target
+**The Governor is intentionally dumb.** It is pure orchestration — no LLM calls of its own. All intelligence lives in the three role scripts. You can swap any role for your own implementation; the Governor only cares about the JSON files roles read and write.
 
-Evolution Kernel is designed to optimize **any** software project. The first project being optimized is **Token-Ignition**, specifically its backend evaluator.
+**Roles communicate through files, not shared memory.** The planner never talks directly to the executor. The evaluator never sees the executor's self-assessment. The only shared state is the ledger.
 
-Token-Ignition is therefore the first optimization target and reference adapter, not a hard dependency. It is used to prove that the kernel can safely and deterministically evolve a real codebase while keeping the runtime small.
+---
 
-## Current Status
+## Capabilities
 
-The current v0 implementation provides the foundational runtime:
+| Feature | Status |
+|---|---|
+| Multi-round LLM loop with memory (history injection) | ✅ Working |
+| Budget guards: `max_total_usd`, `max_total_tokens` | ✅ Working |
+| Iteration / consecutive-failure hard stops | ✅ Working |
+| Full ledger audit trail (survives process restarts) | ✅ Working |
+| Git worktree sandbox — every attempt isolated | ✅ Working |
+| Scope enforcement — rejects changes outside `allowed_paths` | ✅ Working |
+| Config-driven: swap LLM provider, model, coding agent | ✅ Working |
+| Aider and Claude Code executor support | ✅ Working |
+| Anthropic and OpenAI planner/evaluator support | ✅ Working |
+| Goal evaluator — stops when mission is "won" | 🔧 PR #5 |
+| k-branch parallel exploration (FunSearch style) | 🔧 PR #6 |
+| Process sandbox (firejail / bwrap) for production safety | 🔧 PR #7 |
 
-| Area | What exists now |
-| --- | --- |
-| Governor | Deterministic orchestration for planning, execution, evaluation, promotion, rollback, and ledger updates. |
-| Sandbox | Git worktree-based experiment isolation. Candidate changes do not affect the accepted branch unless promoted. |
-| Role handoff | `planner`, `executor`, and `evaluator` run as isolated commands and communicate through JSON files. |
-| Promotion model | Accepted candidates advance the local `evolution/accepted` branch. Rejected experiments remain recorded but do not advance it. |
-| First adapter | A Token-Ignition adapter with a hand-written golden set for evaluator evolution. |
+---
 
-## What It Does Not Do Yet
-
-| Not yet | Why it matters |
-| --- | --- |
-| LLM-native planner/executor | The current tests use fixture scripts; real agent integrations are the next step. |
-| Strong process/container sandboxing | Git worktrees isolate files, but executor and evaluator isolation should become stronger. |
-| Multi-target adapter framework | Token-Ignition is the first target; more adapters are needed to prove generality. |
-| Parallel evolution branches | v0 focuses on one accepted branch and a simple promotion path. |
-
-## Roadmap
-
-- [ ] Add LLM-driven planner and executor implementations.
-- [ ] Add stronger sandbox isolation for executor and evaluator runs.
-- [ ] Generalize the adapter interface beyond Token-Ignition.
-- [ ] Add examples for multiple project types.
-- [ ] Support parallel evolution branches and richer merge strategies.
-- [ ] Improve reporting around ledger history, promotion decisions, and rejected candidates.
-
-## Documents
-
-- [Protocol](docs/protocol.md)
-- [Token-Ignition First Task](docs/token-ignition-first-task.md)
-
-## Run Tests
-
-```bash
-python3 -m unittest discover -s tests -v
-python3 adapters/token_ignition/evaluate_golden_cases.py
-```
-
-## CLI Shape
-
-YAML-config mode (the primary MVP entry point — observer + scope + hard stops):
-
-```bash
-python3 -m evolution_kernel.cli \
-  --config /path/to/evolution.yml \
-  --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger
-```
-
-Legacy direct-flags mode (still supported for the original golden-case tests):
-
-```bash
-python3 -m evolution_kernel.cli \
-  --repo /path/to/target-repo \
-  --ledger /path/to/evolution-ledger \
-  --goal /path/to/goal.json \
-  --planner python3 /path/to/planner.py \
-  --executor python3 /path/to/executor.py \
-  --evaluator python3 /path/to/evaluator.py
-```
-
-Reset the persistent hard-stop state (after a halt) without running a loop:
-
-```bash
-python3 -m evolution_kernel.cli --reset --ledger /path/to/evolution-ledger
-```
-
-Each role command receives:
-
-```text
---input <json>
---output <json>
---worktree <sandbox path>
-```
-
-## MVP Usage (closed loop with observer, scope, hard stops)
-
-This MVP wires the full closed loop described in the protocol:
-`config -> observe -> plan/execute -> evaluate -> accept/reject -> ledger`.
-
-### 1. Author an `evolution.yml`
+## Configuration reference
 
 ```yaml
-mission: "Add a minimal in-scope mutation so the evaluator accepts."
+# Required — free-text statement of what "better" means
+mission: "Increase src/ test coverage from 40% to 80%"
 
+# How to measure the current state of the target repo
 evidence_sources:
-  - type: file
-    path: metrics.json
-  - type: shell
-    command: "bash scripts/status.sh"
+  - type: shell             # runs a command; stdout goes into observation.json
+    command: "python3 -m pytest --cov=src -q && ..."
+  - type: file              # reads a file; content goes into observation.json
+    path: "metrics.json"
 
+# Only files under these paths may be modified by the executor
 mutation_scope:
   allowed_paths:
-    - "src/"
+    - "tests/"              # changes outside this list are auto-rejected
 
+# When to stop
 hard_stops:
-  max_iterations: 3
-  max_consecutive_failures: 2
+  max_iterations: 10            # total rounds (required, must be ≥ 1)
+  max_consecutive_failures: 3   # consecutive rejections before halt (required)
+  max_total_usd: 0.0            # 0 = unlimited
+  max_total_tokens: 0           # 0 = unlimited
 
+# LLM used by the planner and evaluator role scripts
+llm:
+  provider: anthropic           # anthropic | openai
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+# Coding agent used by the executor role script
+coding_agent:
+  tool: aider                   # aider | claude-code
+
+# How many past rounds the planner sees as context
+history:
+  max_entries: 10
+
+# The three role commands (each receives --input, --output, --worktree)
 roles:
-  planner:   ["python3", "bots/planner.py"]
-  executor:  ["python3", "bots/executor.py"]
-  evaluator: ["python3", "bots/evaluator.py"]
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
 ```
 
-`evidence_sources` are read into `observation.json` before the planner runs.
-`mutation_scope.allowed_paths` are enforced after the executor commits — anything
-outside the scope is auto-rejected with `decision.reason = "scope_violation: ..."`.
-`hard_stops` persist across runs in `<ledger>/.evolution_state.json` so a stuck
-loop halts even across CLI invocations.
+**Switch to OpenAI:**
 
-### 2. Run a single iteration
+```yaml
+llm:
+  provider: openai
+  model: gpt-4o
+  api_key_env: OPENAI_API_KEY
+```
+
+**Switch to Claude Code as coding agent:**
+
+```yaml
+coding_agent:
+  tool: claude-code
+```
+
+---
+
+## CLI reference
 
 ```bash
-# one-time: install the package (pulls PyYAML, the only runtime dep)
-python3 -m pip install -e .
+# Run the multi-round loop (recommended — stops when a hard stop fires)
+evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger --loop
 
-# one-time: prepare a target repo
-bash examples/demo_target/setup.sh
+# Run exactly one round
+evolution-kernel --config evolution.yml --repo /path/to/repo --ledger /tmp/ledger
 
-python3 -m evolution_kernel.cli \
-  --config examples/evolution.yml \
-  --repo  examples/demo_target \
-  --ledger /tmp/ek-ledger
+# Reset hard-stop counters to start a fresh session
+evolution-kernel --ledger /tmp/ledger --reset
 ```
 
-> The `pip install -e .` step is only needed once per environment — it pulls
-> `PyYAML>=6.0` (declared in `pyproject.toml`). After that the three-line
-> command above is reproducible from a clean checkout.
+Exit codes: `0` = clean finish, `3` = halted by a hard stop.
 
-Reset the persistent hard-stop counters when you want to start fresh:
+---
+
+## Install
 
 ```bash
-python3 -m evolution_kernel.cli --reset --ledger /tmp/ek-ledger
+pip install evolution-kernel
 ```
 
-### 3. Inspect the ledger
+From source (the only runtime dependency is PyYAML):
 
-Every run produces a directory under `<ledger>/runs/<run_id>/` containing the
-full evidence trail:
+```bash
+git clone https://github.com/Protocol-zero-0/evolution-kernel.git
+cd evolution-kernel
+pip install -e .
+```
+
+Python 3.10 or later required.
+
+---
+
+## Running the tests
+
+```bash
+python3 -m pytest tests/ -v
+```
+
+All tests run locally with no network calls — roles are replaced by lightweight fixture scripts.
+
+---
+
+## Writing your own role scripts
+
+Each role is an executable that receives three arguments:
 
 ```text
-goal.json              # legacy mode only
-config.json            # full snapshot of the YAML config (full mode)
-observation.json       # what the observer collected before planning
-plan.json              # planner output
-patch.diff             # diff between baseline and candidate commit
-candidate_commit.txt   # the candidate commit hash inside the sandbox
-evaluation.json        # evaluator output (synthesised on scope_violation)
-decision.json          # accept / reject + reason
-reflection.json        # post-decision summary
+--input    <path>   JSON the governor prepared for this role
+--output   <path>   JSON the role must write before exiting
+--worktree <path>   path to the isolated git sandbox checkout
 ```
 
-### 4. Acceptance criteria -> tests
+The built-in `roles/planner.py`, `roles/executor.sh`, and `roles/evaluator.py` are the reference implementation. Copy and modify them, or replace them entirely with a shell script, a Python program, or a Docker call. The Governor has no opinion on what runs inside a role.
 
-The six acceptance bullets from issue #1 each map to a test in
-`tests/test_acceptance.py`:
+---
 
-| # | Acceptance bullet | Test |
-| - | --- | --- |
-| 1 | Accept advances `evolution/accepted` | `test_accept_advances_accepted_branch` |
-| 2 | Reject does not advance it | `test_reject_does_not_advance_accepted_branch` |
-| 3 | Mutation scope enforced + violation logged | `test_scope_violation_is_rejected_and_logged` |
-| 4 | Observer writes `observation.json` (file + shell) | `test_observer_writes_observation_with_file_and_shell` |
-| 5 | Hard stops halt then `reset` re-enables | `test_hard_stop_blocks_then_reset_allows_via_cli` |
-| 6 | Ledger contains all required artifacts | `test_ledger_contains_all_required_artifacts` |
+## Rollback
 
-### What this MVP intentionally does **not** do
+Every accepted change is a commit on the `evolution/accepted` branch. To undo everything from a session:
 
-In line with the issue's "out of scope" list:
+```bash
+git checkout evolution/accepted
+git log --oneline              # find the baseline commit before the session
+git reset --hard <baseline>    # roll back all accepted changes
+```
 
-- No LLM / agent-swarm / dashboard.
-- No PR router and no auto-merge to upstream `main`.
-- No multi-target adapter framework — the only example target is
-  `examples/demo_target/`.
-- No container/process sandbox beyond git worktrees.
+Rejected experiments are never promoted, so only the changes your evaluator explicitly accepted survive.
 
-These are the natural next steps once the kernel itself is trusted.
+---
+
+## Project layout
+
+```
+evolution_kernel/   # ~1,200-line runtime (Governor, Observer, HardStops, Config, CLI)
+roles/              # reference planner, executor, and evaluator implementations
+examples/           # demo target + evolution.yml to run out of the box
+docs/               # protocol spec
+tests/              # unit + acceptance tests (39 tests, no network required)
+```
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
