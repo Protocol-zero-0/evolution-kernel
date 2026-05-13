@@ -85,6 +85,8 @@ Patch applied:
 Respond with ONLY a JSON object:
 - "hard_gates_passed": true if the change is safe and relevant, false otherwise
 - "recommendation": "accept" or "reject"
+- "fitness": a float in [0.0, 1.0] — how strongly the change advances the goal (used by
+  k-branch parallel exploration to rank sibling branches)
 - "reason": one sentence explaining your decision
 - "metrics": {{}} (optional key/value metrics you can infer)
 """
@@ -114,6 +116,15 @@ Respond with ONLY a JSON object:
     result.setdefault("recommendation", "reject")
     result.setdefault("reason", "")
     result.setdefault("metrics", {})
+    # Back-compat: derive fitness from hard_gates_passed when the evaluator
+    # omitted it, so legacy evaluators keep working under k-branch ranking.
+    if "fitness" not in result:
+        result["fitness"] = 1.0 if result.get("hard_gates_passed") else 0.0
+    else:
+        try:
+            result["fitness"] = float(result["fitness"])
+        except (TypeError, ValueError):
+            result["fitness"] = 0.0
     result["cost_usd"] = cost
     result["tokens_used"] = tokens
 

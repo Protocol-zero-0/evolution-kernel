@@ -245,8 +245,8 @@ flowchart LR
 | Config-driven: swap LLM provider, model, coding agent | ✅ |
 | Aider and Claude Code executor support | ✅ |
 | Anthropic and OpenAI planner/evaluator support | ✅ |
-| Goal evaluator — stops when mission is "won" | 🔧 PR #5 |
-| k-branch parallel exploration (FunSearch / AlphaEvolve style) | 🔧 PR #6 |
+| Goal evaluator — stops when mission is "won" | ✅ |
+| k-branch parallel exploration (FunSearch / AlphaEvolve style) | ✅ |
 | Process sandbox (firejail / bwrap) for production safety | 🔧 PR #7 |
 
 ---
@@ -292,6 +292,12 @@ coding_agent:
 # How many past rounds the planner sees
 history:
   max_entries: 10
+
+# Population-level search: per round, spawn k independent worktrees, score
+# each branch's fitness, promote the best, demote the rest to ledger/failed/.
+# k=1 (default) is plain single-branch run_once behavior.
+parallel:
+  k_branches: 1
 
 roles:
   planner:   ["python3", "roles/planner.py"]

@@ -214,6 +214,293 @@ class Governor:
             if worktree.exists():
                 self._git("worktree", "remove", "--force", str(worktree))
 
+    def run_once_parallel(
+        self,
+        goal: Mapping[str, Any],
+        k: int,
+        strategy: dict | None = None,
+    ) -> RunResult:
+        """Run `k` independent branches in one round, promote the highest-fitness
+        survivor to `evolution/accepted`, demote the rest to `ledger/failed/`.
+
+        `k <= 1` is delegated to `run_once` so single-branch callers retain the
+        exact byte-for-byte behavior covered by the v0.2 + phase-2 test suite.
+        Returned `RunResult.evaluation` carries the *summed* cost/tokens across
+        all k branches so hard-stop accounting in the CLI loop remains correct.
+        """
+        if k <= 1:
+            return self.run_once(goal, strategy=strategy)
+
+        self._ensure_git_repo()
+        self._ensure_accepted_branch()
+        baseline_commit = self._git("rev-parse", ACCEPTED_BRANCH)
+
+        # Allocate k run_ids up front by materializing each run_dir before the
+        # next allocation, so _next_run_id observes the prior sibling.
+        run_ids: list[str] = []
+        for _ in range(k):
+            rid = self._next_run_id()
+            (self.ledger_dir / "runs" / rid).mkdir(parents=True, exist_ok=False)
+            run_ids.append(rid)
+
+        branches: list[dict] = []
+        worktrees: list[Path] = []
+        try:
+            for rid in run_ids:
+                br = self._run_single_branch(goal, rid, strategy, baseline_commit)
+                branches.append(br)
+                worktrees.append(br["worktree"])
+
+            winner_idx = self._select_winner(branches)
+
+            total_cost = 0.0
+            total_tokens = 0
+            for br in branches:
+                ev = br["evaluation"]
+                try:
+                    total_cost += float(ev.get("cost_usd") or 0.0)
+                except (TypeError, ValueError):
+                    pass
+                try:
+                    total_tokens += int(ev.get("tokens_used") or 0)
+                except (TypeError, ValueError):
+                    pass
+
+            winner_result: RunResult | None = None
+            for i, br in enumerate(branches):
+                is_winner = (winner_idx is not None and i == winner_idx)
+                if is_winner:
+                    fitness = float(br["evaluation"].get("fitness", 0.0))
+                    decision = RunDecision(
+                        accepted=True,
+                        reason=f"k-branch winner: highest fitness {fitness:.4f}",
+                        baseline_commit=baseline_commit,
+                        candidate_commit=br["candidate_commit"],
+                        rollback_target=baseline_commit,
+                    )
+                    self._git("branch", "-f", ACCEPTED_BRANCH, br["candidate_commit"])
+                else:
+                    if br["scope_violation"]:
+                        reason = f"scope_violation: {','.join(br['violations'])}"
+                    elif not br["candidate_commit"]:
+                        reason = "executor produced no repo changes"
+                    elif winner_idx is None:
+                        reason = "hard gates failed or evaluator rejected candidate"
+                    else:
+                        reason = f"k-branch: outranked by {branches[winner_idx]['run_id']}"
+                    decision = RunDecision(
+                        accepted=False,
+                        reason=reason,
+                        baseline_commit=baseline_commit,
+                        candidate_commit=br["candidate_commit"],
+                        rollback_target=baseline_commit,
+                    )
+
+                self._write_json(br["run_dir"] / "decision.json", decision.__dict__)
+                plan_summary = ""
+                try:
+                    plan_summary = str(self._read_json(br["run_dir"] / "plan.json").get("summary", ""))
+                except Exception:
+                    pass
+                self._write_json(
+                    br["run_dir"] / "reflection.json",
+                    {
+                        "run_id": br["run_id"],
+                        "accepted": decision.accepted,
+                        "reason": decision.reason,
+                        "plan_summary": plan_summary,
+                        "metrics": br["evaluation"].get("metrics", {}),
+                        "fitness": float(br["evaluation"].get("fitness", 0.0)),
+                        "created_at": self._now(),
+                    },
+                )
+                if not decision.accepted:
+                    failed_dir = self.ledger_dir / "failed"
+                    failed_dir.mkdir(parents=True, exist_ok=True)
+                    self._write_json(failed_dir / f"{br['run_id']}-summary.json", decision.__dict__)
+                if is_winner:
+                    aggregated = dict(br["evaluation"])
+                    aggregated["cost_usd"] = total_cost
+                    aggregated["tokens_used"] = total_tokens
+                    winner_result = RunResult(br["run_id"], br["run_dir"], br["worktree"], decision, aggregated)
+
+            self._record_accepted_commit()
+
+            if winner_result is None:
+                # No branch passed hard gates: return the first branch as the
+                # round outcome (so CLI hard-stop bookkeeping still ticks),
+                # carrying the summed cost across all attempted branches.
+                br = branches[0]
+                decision_dict = self._read_json(br["run_dir"] / "decision.json")
+                aggregated = dict(br["evaluation"])
+                aggregated["cost_usd"] = total_cost
+                aggregated["tokens_used"] = total_tokens
+                winner_result = RunResult(
+                    br["run_id"],
+                    br["run_dir"],
+                    br["worktree"],
+                    RunDecision(**decision_dict),
+                    aggregated,
+                )
+            return winner_result
+        finally:
+            for wt in worktrees:
+                if Path(wt).exists():
+                    try:
+                        self._git("worktree", "remove", "--force", str(wt))
+                    except Exception:
+                        pass
+
+    def _run_single_branch(
+        self,
+        goal: Mapping[str, Any],
+        run_id: str,
+        strategy: dict | None,
+        baseline_commit: str,
+    ) -> dict:
+        """Run plan→execute→evaluate for one branch without promotion.
+
+        The returned dict carries everything `run_once_parallel` needs to rank,
+        promote, and record a per-branch decision after all k branches finish.
+        """
+        run_dir = self.ledger_dir / "runs" / run_id
+        worktree = self.ledger_dir / "worktrees" / run_id
+        worktree.parent.mkdir(parents=True, exist_ok=True)
+        branch = f"evolution/experiment/{run_id}"
+        self._git("worktree", "add", "-B", branch, str(worktree), baseline_commit)
+
+        self._write_json(run_dir / "goal.json", dict(goal))
+        if self.config_snapshot is not None:
+            self._write_json(run_dir / "config.json", self.config_snapshot)
+
+        observation_path = run_dir / "observation.json"
+        observation = collect_observation(self.evidence_sources, self.target_repo)
+        write_observation(observation_path, observation)
+
+        planner_input: dict = {
+            "run_id": run_id,
+            "goal": goal,
+            "accepted_branch": ACCEPTED_BRANCH,
+            "baseline_commit": baseline_commit,
+            "worktree": str(worktree),
+            "ledger_dir": str(self.ledger_dir),
+            "observation_path": str(observation_path),
+            "allowed_paths": list(self.allowed_paths),
+            "history": self._build_history(),
+        }
+        if strategy is not None:
+            planner_input["strategy"] = strategy
+        self._write_json(run_dir / "planner_input.json", planner_input)
+        self._run_role(self.planner, run_dir / "planner_input.json", run_dir / "plan.json", worktree)
+
+        self._write_json(
+            run_dir / "executor_input.json",
+            {
+                "run_id": run_id,
+                "goal": goal,
+                "baseline_commit": baseline_commit,
+                "plan_path": str(run_dir / "plan.json"),
+                "worktree": str(worktree),
+            },
+        )
+        self._run_role(
+            self.executor,
+            run_dir / "executor_input.json",
+            run_dir / "executor_output.json",
+            worktree,
+        )
+
+        candidate_commit = self._commit_candidate(worktree, run_id)
+        (run_dir / "candidate_commit.txt").write_text(
+            (candidate_commit or "") + "\n", encoding="utf-8"
+        )
+        if candidate_commit:
+            patch = self._git_in(worktree, "diff", "--binary", baseline_commit, candidate_commit)
+            if patch and not patch.endswith("\n"):
+                patch += "\n"
+        else:
+            patch = ""
+        (run_dir / "patch.diff").write_text(patch, encoding="utf-8")
+
+        scope_report = self._enforce_scope(worktree, baseline_commit, candidate_commit)
+        scope_violation = False
+        violations: list[str] = []
+        if scope_report is not None and not scope_report.ok:
+            evaluation: dict = {
+                "hard_gates_passed": False,
+                "recommendation": "reject",
+                "reason": "scope_violation",
+                "violations": list(scope_report.violations),
+                "changed_files": list(scope_report.changed_files),
+                "allowed_paths": list(scope_report.allowed_paths),
+                "fitness": 0.0,
+                "metrics": {},
+            }
+            self._write_json(run_dir / "evaluation.json", evaluation)
+            scope_violation = True
+            violations = list(scope_report.violations)
+        else:
+            self._write_json(
+                run_dir / "evaluator_input.json",
+                {
+                    "run_id": run_id,
+                    "goal": goal,
+                    "baseline_commit": baseline_commit,
+                    "candidate_commit": candidate_commit,
+                    "patch_path": str(run_dir / "patch.diff"),
+                    "worktree": str(worktree),
+                    "observation_path": str(observation_path),
+                },
+            )
+            self._run_role(
+                self.evaluator,
+                run_dir / "evaluator_input.json",
+                run_dir / "evaluation.json",
+                worktree,
+            )
+            evaluation = dict(self._read_json(run_dir / "evaluation.json"))
+            # Back-compat: synthesize a fitness when the evaluator omitted one.
+            if "fitness" not in evaluation:
+                evaluation["fitness"] = 1.0 if evaluation.get("hard_gates_passed") else 0.0
+
+        return {
+            "run_id": run_id,
+            "run_dir": run_dir,
+            "worktree": worktree,
+            "candidate_commit": candidate_commit,
+            "evaluation": evaluation,
+            "scope_violation": scope_violation,
+            "violations": violations,
+        }
+
+    @staticmethod
+    def _select_winner(branches: Sequence[dict]) -> int | None:
+        """Pick the branch with the highest fitness among those that (1) produced
+        a commit, (2) survived scope check, (3) passed hard gates, and (4) the
+        evaluator recommended `accept` or `promote`. Ties broken by branch order
+        so behavior is deterministic for tests."""
+        scored: list[tuple[float, int]] = []
+        for i, br in enumerate(branches):
+            if not br["candidate_commit"]:
+                continue
+            if br["scope_violation"]:
+                continue
+            ev = br["evaluation"]
+            if not bool(ev.get("hard_gates_passed", False)):
+                continue
+            rec = str(ev.get("recommendation", "")).lower()
+            if rec not in {"accept", "promote"}:
+                continue
+            try:
+                fitness = float(ev.get("fitness", 0.0))
+            except (TypeError, ValueError):
+                fitness = 0.0
+            scored.append((fitness, i))
+        if not scored:
+            return None
+        scored.sort(key=lambda pair: (-pair[0], pair[1]))
+        return scored[0][1]
+
     def _build_history(self) -> list[dict]:
         """Scan ledger for past run reflections; return most recent N entries."""
         runs_dir = self.ledger_dir / "runs"
