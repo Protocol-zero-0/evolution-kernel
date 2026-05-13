@@ -19,7 +19,7 @@
   <a href="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml">
     <img src="https://github.com/Protocol-zero-0/evolution-kernel/actions/workflows/tests.yml/badge.svg" alt="tests">
   </a>
-  <img src="https://img.shields.io/badge/status-v0.2-blue" alt="v0.2">
+  <img src="https://img.shields.io/badge/status-v0.3-blue" alt="v0.3">
   <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue" alt="Python ≥ 3.10">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
   <img src="https://img.shields.io/badge/dep-PyYAML%20only-lightgrey" alt="仅依赖 PyYAML">
