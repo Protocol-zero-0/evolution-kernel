@@ -122,7 +122,11 @@ def _run_with_config(args: argparse.Namespace, cfg: EvolutionConfig) -> int:
         print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
         return 3
 
-    result = governor.run_once(goal, run_id=args.run_id)
+    k = cfg.parallel.k_branches
+    if k > 1:
+        result = governor.run_once_parallel(goal, k=k)
+    else:
+        result = governor.run_once(goal, run_id=args.run_id)
     cost_usd, tokens_used = _safe_cost(result.evaluation)
     new_state = hard_stops.record_outcome(
         state,
@@ -163,7 +167,11 @@ def _run_loop(
             print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
             return 3
 
-        result = governor.run_once(goal, strategy=pending_strategy)
+        k = cfg.parallel.k_branches
+        if k > 1:
+            result = governor.run_once_parallel(goal, k=k, strategy=pending_strategy)
+        else:
+            result = governor.run_once(goal, strategy=pending_strategy)
         pending_strategy = None
         iteration += 1
 

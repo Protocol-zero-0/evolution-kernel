@@ -107,6 +107,11 @@ class StrategistConfig:
 
 
 @dataclass(frozen=True)
+class ParallelConfig:
+    k_branches: int = 1
+
+
+@dataclass(frozen=True)
 class EvolutionConfig:
     mission: str
     evidence_sources: tuple[EvidenceSource, ...] = ()
@@ -118,6 +123,7 @@ class EvolutionConfig:
     history: HistoryConfig = field(default_factory=HistoryConfig)
     goal_evaluator: GoalEvaluatorConfig = field(default_factory=GoalEvaluatorConfig)
     strategist: StrategistConfig = field(default_factory=StrategistConfig)
+    parallel: ParallelConfig = field(default_factory=ParallelConfig)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -152,6 +158,7 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
     history = _parse_history(raw.get("history", {}))
     goal_evaluator = _parse_goal_evaluator(raw.get("goal_evaluator", {}))
     strategist = _parse_strategist(raw.get("strategist", {}))
+    parallel = _parse_parallel(raw.get("parallel", {}))
 
     return EvolutionConfig(
         mission=mission.strip(),
@@ -164,6 +171,7 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
         history=history,
         goal_evaluator=goal_evaluator,
         strategist=strategist,
+        parallel=parallel,
         raw=dict(raw),
     )
 
@@ -313,3 +321,12 @@ def _parse_strategist(value: Any) -> StrategistConfig:
     if not isinstance(every_n, int) or isinstance(every_n, bool) or every_n < 1:
         raise ConfigError("`strategist.every_n_rounds` must be a positive integer")
     return StrategistConfig(enabled=bool(value.get("enabled", False)), every_n_rounds=every_n)
+
+
+def _parse_parallel(value: Any) -> ParallelConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`parallel` must be a mapping")
+    k = value.get("k_branches", 1)
+    if not isinstance(k, int) or isinstance(k, bool) or k < 1:
+        raise ConfigError("`parallel.k_branches` must be a positive integer")
+    return ParallelConfig(k_branches=k)

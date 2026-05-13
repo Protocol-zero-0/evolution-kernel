@@ -245,8 +245,8 @@ flowchart LR
 | 配置驱动：随时切换 LLM 提供商、模型、coding agent | ✅ |
 | Aider 和 Claude Code executor 支持 | ✅ |
 | Anthropic 和 OpenAI 规划器 / 评估器支持 | ✅ |
-| 目标评估器——当 mission 完成时自动停止 | 🔧 PR #5 |
-| k 路并行探索（FunSearch / AlphaEvolve 模式） | 🔧 PR #6 |
+| 目标评估器——当 mission 完成时自动停止 | ✅ |
+| k 路并行探索（FunSearch / AlphaEvolve 模式） | ✅ |
 | 进程级沙箱（firejail / bwrap），面向生产环境 | 🔧 PR #7 |
 
 ---
@@ -292,6 +292,11 @@ coding_agent:
 # 规划器每轮能看到多少轮历史
 history:
   max_entries: 10
+
+# 种群级搜索：每轮起 k 个独立 worktree，按 fitness 排名，最高分推进 evolution/accepted，
+# 其余写入 ledger/failed/。k=1（默认）等价于单路 run_once。
+parallel:
+  k_branches: 1
 
 roles:
   planner:   ["python3", "roles/planner.py"]
