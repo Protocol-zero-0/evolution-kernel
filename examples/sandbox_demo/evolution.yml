@@ -1,0 +1,36 @@
+mission: "Demonstrate that firejail prevents the executor from writing outside its assigned worktree."
+
+# This demo uses tiny local Python role scripts that are committed *inside*
+# the target repository, so the worktree-relative paths below resolve from
+# inside each experiment's git worktree. No remote LLM is involved.
+
+history:
+  max_entries: 5
+
+evidence_sources: []
+
+mutation_scope:
+  allowed_paths:
+    - "EVOLUTION_MARKER.txt"
+
+hard_stops:
+  max_iterations: 1
+  max_consecutive_failures: 1
+
+# This is the feature under test in PR7a.
+sandbox:
+  enabled: true
+  backend: firejail
+  # extra_args is for advanced operators; defaults are fine for this demo.
+  extra_args: []
+
+roles:
+  planner:
+    - "/usr/bin/python3"
+    - "bots/planner.py"
+  executor:
+    - "/usr/bin/python3"
+    - "bots/executor.py"
+  evaluator:
+    - "/usr/bin/python3"
+    - "bots/evaluator.py"

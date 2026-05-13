@@ -94,6 +94,7 @@ def _make_governor(args: argparse.Namespace, cfg: EvolutionConfig) -> Governor:
         allowed_paths=cfg.mutation_scope.allowed_paths,
         config_snapshot=cfg.raw,
         history_max_entries=cfg.history.max_entries,
+        sandbox=cfg.sandbox,
     )
 
 
