@@ -63,11 +63,11 @@ pip install evolution-kernel
 
 # 2. Describe your goal
 cat > evolution.yml << 'EOF'
-mission: "Evolve the math-solver harness so Qwen3-7B-Instruct answers 90%+ of GSM8K problems correctly — no model retraining"
+mission: "Evolve the math-solver harness so Qwen3-8B-Instruct answers 90%+ of GSM8K problems correctly — no model retraining"
 
 evidence_sources:
   - type: shell
-    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
 
 mutation_scope:
   allowed_paths: ["src/math_solver_harness/"]
@@ -102,25 +102,25 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## See it in action
 
-### $34. One night. A 7B model that runs on a MacBook — from 51.8% to 96.2% on elementary math. Zero weight changes.
+### $34. One night. An 8B model that runs on a MacBook — from 51.8% to 96.2% on elementary math. Zero weight changes.
 
-> Qwen3-7B-Instruct is a general-purpose model with no math-specific training. Its weights are frozen throughout. Evolution Kernel evolves only the solver harness — prompt strategies, tools, and sampling logic. After one overnight run, the same model sits 2.8 points behind GPT-5.5. That means every child can have a free, local, always-on, privacy-safe math tutor.
+> Qwen3-8B-Instruct is a general-purpose model with no math-specific training. Its weights are frozen throughout. Evolution Kernel evolves only the solver harness — prompt strategies, tools, and sampling logic. After one overnight run, the same model sits 2.8 points behind GPT-5.5. That means every child can have a free, local, always-on, privacy-safe math tutor.
 
 ```
                                          GSM8K pass rate (1,319 math word problems)
   GPT-5.5                  ████████████████████  99.0%
   Claude Opus 4.7          ████████████████████  98.6%
   ─────────────────────────────────────────────────────
-  Qwen3-7B + ours          ███████████████████░  96.2%  ← after $34 overnight run
+  Qwen3-8B + ours          ███████████████████░  96.2%  ← after $34 overnight run
   ─────────────────────────────────────────────────────
   Early GPT-4              ██████████████████░░  92.0%
-  Qwen3-7B baseline        ██████████░░░░░░░░░░  51.8%  ← raw model, naive prompt
+  Qwen3-8B baseline        ██████████░░░░░░░░░░  51.8%  ← raw model, naive prompt
 ```
 
 Here is exactly what the loop did, generation by generation:
 
 ```
-Model: Qwen3-7B-Instruct (frozen weights)   Scope: src/math_solver_harness/
+Model: Qwen3-8B-Instruct (frozen weights)   Scope: src/math_solver_harness/
 Benchmark: GSM8K · 1,319 math word problems
 Baseline: 51.8%   Reference: GPT-5.5: 99.0%  Opus 4.7: 98.6%  Early GPT-4: 92.0%
 
@@ -167,7 +167,7 @@ Baseline: 51.8%   Reference: GPT-5.5: 99.0%  Opus 4.7: 98.6%  Early GPT-4: 92.0%
 Final:  51.8% → 96.2%   2.8 pts behind GPT-5.5 (99.0%), ahead of early GPT-4 (92.0%)
         $34.10 · 25 git commits · all changes in src/math_solver_harness/
         Model weights: 0 bytes changed   Harness: ~600 lines of Python
-        Any 7B model can use this harness — local inference, zero API cost
+        Any 8B-class model can use this harness — local inference, zero API cost
 ```
 
 > **Gen 09 is the tell.** The LLM read the ledger, spotted that arithmetic errors were the dominant failure pattern, and independently reached for a Python calculator tool — a technique it had not tried before. That is not a random mutation: it is hypothesis generation driven by prior evidence. This is what history injection does.
@@ -247,7 +247,7 @@ flowchart LR
 | Anthropic and OpenAI planner/evaluator support | ✅ |
 | Goal evaluator — stops when mission is "won" | ✅ |
 | k-branch parallel exploration (FunSearch / AlphaEvolve style) | ✅ |
-| Process sandbox (firejail / bwrap) for production safety | 🔧 PR #7 |
+| Process sandbox via firejail — executor cannot write outside its worktree | ✅ |
 
 ---
 
@@ -258,12 +258,12 @@ flowchart LR
 
 ```yaml
 # Required — what "better" means for your project
-mission: "Evolve the math-solver harness so Qwen3-7B-Instruct scores 90%+ on GSM8K — no model retraining"
+mission: "Evolve the math-solver harness so Qwen3-8B-Instruct scores 90%+ on GSM8K — no model retraining"
 
 # How to measure the current state
 evidence_sources:
   - type: shell         # stdout goes into observation.json
-    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
   - type: file          # file contents go into observation.json
     path: "metrics.json"
 
@@ -298,6 +298,15 @@ history:
 # k=1 (default) is plain single-branch run_once behavior.
 parallel:
   k_branches: 1
+
+# Process sandbox: when enabled, the executor's argv is wrapped with firejail
+# so the rest of the filesystem is read-only and only the worktree + the
+# run's ledger directory are writable. Planner and evaluator are read-mostly
+# and run unsandboxed. Default off — v0.3 behavior is preserved.
+sandbox:
+  enabled: false                # set to true on machines with firejail installed
+  backend: firejail
+  extra_args: []                # appended verbatim before `--`
 
 roles:
   planner:   ["python3", "roles/planner.py"]

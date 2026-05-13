@@ -63,11 +63,11 @@ pip install evolution-kernel
 
 # 2. 描述你的目标
 cat > evolution.yml << 'EOF'
-mission: "进化数学解题 harness，让 Qwen3-7B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
+mission: "进化数学解题 harness，让 Qwen3-8B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
 
 evidence_sources:
   - type: shell
-    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
 
 mutation_scope:
   allowed_paths: ["src/math_solver_harness/"]
@@ -102,25 +102,25 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## 看它实际运行
 
-### $34，一晚上，一个能在 MacBook 上跑的 7B 模型——小学数学应用题正确率 96.2%，和 GPT-5.5 基本同档。模型权重一字节未动。
+### $34，一晚上，一个能在 MacBook 上跑的 8B 模型——小学数学应用题正确率 96.2%，和 GPT-5.5 基本同档。模型权重一字节未动。
 
-> Qwen3-7B-Instruct 是一个通用模型，没有专门的数学训练。权重全程冻结。Evolution Kernel 只进化 solver harness——提示策略、工具调用和采样逻辑。一个隔夜跑完，同一个模型只落后 GPT-5.5 2.8 个百分点。这意味着每个孩子都能拥有一个免费、本地、随时在线、完全保护隐私的数学辅导老师。
+> Qwen3-8B-Instruct 是一个通用模型，没有专门的数学训练。权重全程冻结。Evolution Kernel 只进化 solver harness——提示策略、工具调用和采样逻辑。一个隔夜跑完，同一个模型只落后 GPT-5.5 2.8 个百分点。这意味着每个孩子都能拥有一个免费、本地、随时在线、完全保护隐私的数学辅导老师。
 
 ```
                                          GSM8K 通过率（1,319 道小学数学应用题）
   GPT-5.5                  ████████████████████  99.0%
   Claude Opus 4.7          ████████████████████  98.6%
   ─────────────────────────────────────────────────────
-  Qwen3-7B + 我们          ███████████████████░  96.2%  ← $34 一晚上跑出来的
+  Qwen3-8B + 我们          ███████████████████░  96.2%  ← $34 一晚上跑出来的
   ─────────────────────────────────────────────────────
   早期 GPT-4               ██████████████████░░  92.0%
-  Qwen3-7B 基线            ██████████░░░░░░░░░░  51.8%  ← 原始模型，朴素提示
+  Qwen3-8B 基线            ██████████░░░░░░░░░░  51.8%  ← 原始模型，朴素提示
 ```
 
 每代循环实际发生的事：
 
 ```
-模型：Qwen3-7B-Instruct（权重冻结）    范围：src/math_solver_harness/
+模型：Qwen3-8B-Instruct（权重冻结）    范围：src/math_solver_harness/
 基准：GSM8K · 1,319 道小学数学应用题
 基线：51.8%   参考：GPT-5.5: 99.0%  Opus 4.7: 98.6%  早期 GPT-4: 92.0%
 
@@ -167,7 +167,7 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 最终：51.8% → 96.2%   落后 GPT-5.5 (99.0%) 2.8 分，领先早期 GPT-4 (92.0%)
       $34.10 · 25 个 git commit · 全部落在 src/math_solver_harness/
       模型权重：0 字节变化   Harness：~600 行 Python
-      任何 7B 模型都能用这个 harness——本地推理，零 API 费用
+      任何 8B 量级的模型都能用这个 harness——本地推理，零 API 费用
 ```
 
 > **gen 09 是关键时刻。** LLM 读了 ledger，发现算术计算错误是最主要的失败模式，主动引入了 Python 计算器工具——一个它此前从未尝试过的技巧。这不是随机突变——是用过去失败数据驱动的假设生成。这就是 history injection 在实际中的含义。
@@ -247,7 +247,7 @@ flowchart LR
 | Anthropic 和 OpenAI 规划器 / 评估器支持 | ✅ |
 | 目标评估器——当 mission 完成时自动停止 | ✅ |
 | k 路并行探索（FunSearch / AlphaEvolve 模式） | ✅ |
-| 进程级沙箱（firejail / bwrap），面向生产环境 | 🔧 PR #7 |
+| 进程级沙箱（firejail）——执行器无法写出 worktree 之外的任何文件 | ✅ |
 
 ---
 
@@ -258,12 +258,12 @@ flowchart LR
 
 ```yaml
 # 必填——"更好"对你的项目意味着什么
-mission: "进化数学解题 harness，让 Qwen3-7B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
+mission: "进化数学解题 harness，让 Qwen3-8B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
 
 # 如何衡量当前状态
 evidence_sources:
   - type: shell         # stdout 写入 observation.json
-    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
   - type: file          # 文件内容写入 observation.json
     path: "metrics.json"
 
@@ -297,6 +297,14 @@ history:
 # 其余写入 ledger/failed/。k=1（默认）等价于单路 run_once。
 parallel:
   k_branches: 1
+
+# 进程级沙箱：开启后用 firejail 包装执行器命令——文件系统整体只读，仅 worktree
+# 与该轮 ledger 子目录可写。规划器和评估器以读为主，不受影响。
+# 默认关闭，与 v0.3 行为字节级一致。
+sandbox:
+  enabled: false                # 在装有 firejail 的机器上改为 true
+  backend: firejail
+  extra_args: []                # 追加到 firejail 命令的额外参数（在 `--` 之前）
 
 roles:
   planner:   ["python3", "roles/planner.py"]

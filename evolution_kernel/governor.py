@@ -10,6 +10,7 @@ from typing import Any, Mapping, Sequence
 
 from .config import EvidenceSource
 from .observer import collect_observation, write_observation
+from .sandbox import SandboxConfig, wrap_argv as sandbox_wrap_argv
 from .scope import ScopeReport, check_scope
 
 
@@ -53,6 +54,7 @@ class Governor:
         allowed_paths: Sequence[str] = (),
         config_snapshot: Mapping[str, Any] | None = None,
         history_max_entries: int = 10,
+        sandbox: SandboxConfig | None = None,
     ) -> None:
         self.target_repo = Path(target_repo).resolve()
         self.ledger_dir = Path(ledger_dir).resolve()
@@ -63,6 +65,9 @@ class Governor:
         self.allowed_paths = tuple(allowed_paths)
         self.config_snapshot = dict(config_snapshot) if config_snapshot else None
         self.history_max_entries = history_max_entries
+        # `sandbox` applies only to the executor invocation (see _run_role).
+        # Planner and evaluator are read-mostly and unaffected.
+        self.sandbox = sandbox
 
     def run_once(self, goal: Mapping[str, Any], run_id: str | None = None, strategy: dict | None = None) -> RunResult:
         self._ensure_git_repo()
@@ -118,6 +123,7 @@ class Governor:
                 run_dir / "executor_input.json",
                 run_dir / "executor_output.json",
                 worktree,
+                sandbox=self.sandbox,
             )
 
             candidate_commit = self._commit_candidate(worktree, run_id)
@@ -408,6 +414,7 @@ class Governor:
             run_dir / "executor_input.json",
             run_dir / "executor_output.json",
             worktree,
+            sandbox=self.sandbox,
         )
 
         candidate_commit = self._commit_candidate(worktree, run_id)
@@ -569,7 +576,15 @@ class Governor:
         )
         return self._git_in(worktree, "rev-parse", "HEAD")
 
-    def _run_role(self, role: RoleCommand, input_path: Path, output_path: Path, worktree: Path) -> None:
+    def _run_role(
+        self,
+        role: RoleCommand,
+        input_path: Path,
+        output_path: Path,
+        worktree: Path,
+        *,
+        sandbox: SandboxConfig | None = None,
+    ) -> None:
         argv = [
             *role.argv,
             "--input",
@@ -579,6 +594,16 @@ class Governor:
             "--worktree",
             str(worktree),
         ]
+        if sandbox is not None and sandbox.enabled:
+            # Allow writes to the run's ledger directory so the role can persist
+            # its --output JSON, plus any role-declared stdout/stderr capture
+            # next to it. Everything else stays read-only under the sandbox.
+            argv = sandbox_wrap_argv(
+                argv,
+                worktree=worktree,
+                writable=[output_path.parent],
+                config=sandbox,
+            )
         completed = subprocess.run(argv, cwd=worktree, text=True, capture_output=True, check=False)
         if completed.stdout:
             (output_path.parent / f"{output_path.stem}.stdout.txt").write_text(completed.stdout, encoding="utf-8")

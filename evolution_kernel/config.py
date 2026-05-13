@@ -32,6 +32,11 @@ Loads and validates a small YAML schema:
       max_total_usd: 1.00        # 0.0 = unlimited
       max_total_tokens: 500000   # 0 = unlimited
 
+    sandbox:                     # process-level isolation for the executor
+      enabled: false             # default off; v0.3 behavior is preserved
+      backend: firejail          # only backend supported in PR7a
+      extra_args: []             # additional firejail flags, appended before `--`
+
 Validation prefers human-readable errors over raw tracebacks so that bad configs
 can be fixed without reading source.
 """
@@ -43,6 +48,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import yaml
+
+from .sandbox import SandboxConfig
 
 
 class ConfigError(ValueError):
@@ -124,6 +131,7 @@ class EvolutionConfig:
     goal_evaluator: GoalEvaluatorConfig = field(default_factory=GoalEvaluatorConfig)
     strategist: StrategistConfig = field(default_factory=StrategistConfig)
     parallel: ParallelConfig = field(default_factory=ParallelConfig)
+    sandbox: SandboxConfig = field(default_factory=SandboxConfig)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -159,6 +167,7 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
     goal_evaluator = _parse_goal_evaluator(raw.get("goal_evaluator", {}))
     strategist = _parse_strategist(raw.get("strategist", {}))
     parallel = _parse_parallel(raw.get("parallel", {}))
+    sandbox = _parse_sandbox(raw.get("sandbox", {}))
 
     return EvolutionConfig(
         mission=mission.strip(),
@@ -172,6 +181,7 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
         goal_evaluator=goal_evaluator,
         strategist=strategist,
         parallel=parallel,
+        sandbox=sandbox,
         raw=dict(raw),
     )
 
@@ -330,3 +340,29 @@ def _parse_parallel(value: Any) -> ParallelConfig:
     if not isinstance(k, int) or isinstance(k, bool) or k < 1:
         raise ConfigError("`parallel.k_branches` must be a positive integer")
     return ParallelConfig(k_branches=k)
+
+
+def _parse_sandbox(value: Any) -> SandboxConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`sandbox` must be a mapping")
+    enabled = value.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError("`sandbox.enabled` must be a boolean")
+    backend = value.get("backend", "firejail")
+    if not isinstance(backend, str) or not backend.strip():
+        raise ConfigError("`sandbox.backend` must be a non-empty string")
+    extra_raw = value.get("extra_args", [])
+    if not isinstance(extra_raw, list):
+        raise ConfigError("`sandbox.extra_args` must be a list of strings")
+    extras: list[str] = []
+    for index, entry in enumerate(extra_raw):
+        if not isinstance(entry, str) or not entry.strip():
+            raise ConfigError(
+                f"`sandbox.extra_args[{index}]` must be a non-empty string"
+            )
+        extras.append(entry.strip())
+    return SandboxConfig(
+        enabled=enabled,
+        backend=backend.strip(),
+        extra_args=tuple(extras),
+    )

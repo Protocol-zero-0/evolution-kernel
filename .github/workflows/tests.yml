@@ -28,6 +28,11 @@ jobs:
           git config --global user.email "ci@evolution-kernel.local"
           git config --global user.name  "evolution-kernel-ci"
 
+      - name: Install firejail (required for the sandbox E2E test)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y firejail
+
       - name: Install package (PyYAML is the only runtime dep)
         run: python -m pip install -e .
 
