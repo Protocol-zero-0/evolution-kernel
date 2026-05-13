@@ -74,6 +74,8 @@ class Roles:
     planner: tuple[str, ...] = ()
     executor: tuple[str, ...] = ()
     evaluator: tuple[str, ...] = ()
+    goal_evaluator: tuple[str, ...] = ()
+    strategist: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,17 @@ class HistoryConfig:
 
 
 @dataclass(frozen=True)
+class GoalEvaluatorConfig:
+    enabled: bool = False
+
+
+@dataclass(frozen=True)
+class StrategistConfig:
+    enabled: bool = False
+    every_n_rounds: int = 3
+
+
+@dataclass(frozen=True)
 class EvolutionConfig:
     mission: str
     evidence_sources: tuple[EvidenceSource, ...] = ()
@@ -103,6 +116,8 @@ class EvolutionConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     coding_agent: CodingAgentConfig = field(default_factory=CodingAgentConfig)
     history: HistoryConfig = field(default_factory=HistoryConfig)
+    goal_evaluator: GoalEvaluatorConfig = field(default_factory=GoalEvaluatorConfig)
+    strategist: StrategistConfig = field(default_factory=StrategistConfig)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -135,6 +150,8 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
     llm = _parse_llm(raw.get("llm", {}))
     coding_agent = _parse_coding_agent(raw.get("coding_agent", {}))
     history = _parse_history(raw.get("history", {}))
+    goal_evaluator = _parse_goal_evaluator(raw.get("goal_evaluator", {}))
+    strategist = _parse_strategist(raw.get("strategist", {}))
 
     return EvolutionConfig(
         mission=mission.strip(),
@@ -145,6 +162,8 @@ def parse_config(raw: Mapping[str, Any]) -> EvolutionConfig:
         llm=llm,
         coding_agent=coding_agent,
         history=history,
+        goal_evaluator=goal_evaluator,
+        strategist=strategist,
         raw=dict(raw),
     )
 
@@ -212,7 +231,13 @@ def _parse_roles(value: Any) -> Roles:
             f"`roles.{label}` must be a string or a list of non-empty strings"
         )
 
-    return Roles(planner=_argv("planner"), executor=_argv("executor"), evaluator=_argv("evaluator"))
+    return Roles(
+        planner=_argv("planner"),
+        executor=_argv("executor"),
+        evaluator=_argv("evaluator"),
+        goal_evaluator=_argv("goal_evaluator"),
+        strategist=_argv("strategist"),
+    )
 
 
 def _parse_hard_stops(value: Any) -> HardStops:
@@ -273,3 +298,18 @@ def _parse_history(value: Any) -> HistoryConfig:
     if not isinstance(max_entries, int) or isinstance(max_entries, bool) or max_entries < 1:
         raise ConfigError("`history.max_entries` must be a positive integer")
     return HistoryConfig(max_entries=max_entries)
+
+
+def _parse_goal_evaluator(value: Any) -> GoalEvaluatorConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`goal_evaluator` must be a mapping")
+    return GoalEvaluatorConfig(enabled=bool(value.get("enabled", False)))
+
+
+def _parse_strategist(value: Any) -> StrategistConfig:
+    if not isinstance(value, Mapping):
+        raise ConfigError("`strategist` must be a mapping")
+    every_n = value.get("every_n_rounds", 3)
+    if not isinstance(every_n, int) or isinstance(every_n, bool) or every_n < 1:
+        raise ConfigError("`strategist.every_n_rounds` must be a positive integer")
+    return StrategistConfig(enabled=bool(value.get("enabled", False)), every_n_rounds=every_n)
