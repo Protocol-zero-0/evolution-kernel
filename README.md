@@ -53,6 +53,10 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ## Quick Start
 
+> The config below illustrates a real-world scenario (GSM8K math solver).
+> `scripts/run_gsm8k.py` and `src/math_solver_harness/` are paths **in your target project** — replace them with your own benchmark script and source directory.
+> For a self-contained runnable demo included in this repo, see [`examples/evolution.yml`](examples/evolution.yml).
+
 ```bash
 # 1. Install
 pip install evolution-kernel
@@ -248,6 +252,9 @@ flowchart LR
 ---
 
 ## Configuration reference
+
+> All paths (`scripts/run_gsm8k.py`, `src/math_solver_harness/`) refer to **your target project**, not this repo.
+> Replace them with your own benchmark command and source directory.
 
 ```yaml
 # Required — what "better" means for your project

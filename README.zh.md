@@ -53,6 +53,10 @@
 
 ## 快速上手
 
+> 下面的配置展示的是一个真实场景（GSM8K 数学解题）。
+> `scripts/run_gsm8k.py` 和 `src/math_solver_harness/` 是**你的目标项目**里的路径——请替换成你自己的基准测试脚本和源码目录。
+> 仓库自带的可直接运行 demo 请参考 [`examples/evolution.yml`](examples/evolution.yml)。
+
 ```bash
 # 1. 安装
 pip install evolution-kernel
@@ -248,6 +252,9 @@ flowchart LR
 ---
 
 ## 配置参考
+
+> 所有路径（`scripts/run_gsm8k.py`、`src/math_solver_harness/`）指的是**你的目标项目**，不是本仓库。
+> 请替换成你自己的基准测试命令和源码目录。
 
 ```yaml
 # 必填——"更好"对你的项目意味着什么
