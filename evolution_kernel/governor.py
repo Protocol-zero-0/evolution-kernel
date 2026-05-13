@@ -64,7 +64,7 @@ class Governor:
         self.config_snapshot = dict(config_snapshot) if config_snapshot else None
         self.history_max_entries = history_max_entries
 
-    def run_once(self, goal: Mapping[str, Any], run_id: str | None = None) -> RunResult:
+    def run_once(self, goal: Mapping[str, Any], run_id: str | None = None, strategy: dict | None = None) -> RunResult:
         self._ensure_git_repo()
         self._ensure_accepted_branch()
 
@@ -87,20 +87,20 @@ class Governor:
             observation = collect_observation(self.evidence_sources, self.target_repo)
             write_observation(observation_path, observation)
 
-            self._write_json(
-                run_dir / "planner_input.json",
-                {
-                    "run_id": run_id,
-                    "goal": goal,
-                    "accepted_branch": ACCEPTED_BRANCH,
-                    "baseline_commit": baseline_commit,
-                    "worktree": str(worktree),
-                    "ledger_dir": str(self.ledger_dir),
-                    "observation_path": str(observation_path),
-                    "allowed_paths": list(self.allowed_paths),
-                    "history": self._build_history(),
-                },
-            )
+            planner_input: dict = {
+                "run_id": run_id,
+                "goal": goal,
+                "accepted_branch": ACCEPTED_BRANCH,
+                "baseline_commit": baseline_commit,
+                "worktree": str(worktree),
+                "ledger_dir": str(self.ledger_dir),
+                "observation_path": str(observation_path),
+                "allowed_paths": list(self.allowed_paths),
+                "history": self._build_history(),
+            }
+            if strategy is not None:
+                planner_input["strategy"] = strategy
+            self._write_json(run_dir / "planner_input.json", planner_input)
             self._run_role(self.planner, run_dir / "planner_input.json", run_dir / "plan.json", worktree)
 
             self._write_json(

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -144,7 +145,10 @@ def _run_loop(
     governor: Governor,
     goal: dict,
 ) -> int:
-    """Run until hard stops trigger. Each iteration saves state immediately."""
+    """Run until hard stops trigger or goal is reached."""
+    iteration = 0
+    pending_strategy: dict | None = None
+
     while True:
         state = hard_stops.load_state(args.ledger)
         allowed, why = hard_stops.precheck(
@@ -159,7 +163,10 @@ def _run_loop(
             print(json.dumps({"halted": True, "reason": why}, indent=2, sort_keys=True))
             return 3
 
-        result = governor.run_once(goal)
+        result = governor.run_once(goal, strategy=pending_strategy)
+        pending_strategy = None
+        iteration += 1
+
         cost_usd, tokens_used = _safe_cost(result.evaluation)
         new_state = hard_stops.record_outcome(
             state,
@@ -173,6 +180,15 @@ def _run_loop(
         )
         hard_stops.save_state(args.ledger, new_state)
         _print_result(result, halted=new_state.halted, halt_reason=new_state.halt_reason)
+
+        if result.decision.accepted and cfg.goal_evaluator.enabled and cfg.roles.goal_evaluator:
+            if _check_goal_reached(cfg, result):
+                print(json.dumps({"goal_reached": True, "halted": False}, indent=2, sort_keys=True))
+                return 0
+
+        if cfg.strategist.enabled and cfg.roles.strategist and iteration % cfg.strategist.every_n_rounds == 0:
+            pending_strategy = _invoke_strategist(cfg, result, iteration)
+
         if new_state.halted:
             _record_halted(args.ledger, new_state, new_state.halt_reason)
             return 3
@@ -248,6 +264,54 @@ def _print_result(result, *, halted: bool = False, halt_reason: str | None = Non
         payload["halted"] = True
         payload["halt_reason"] = halt_reason
     print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def _check_goal_reached(cfg: EvolutionConfig, result) -> bool:
+    input_path = result.run_dir / "goal_eval_input.json"
+    output_path = result.run_dir / "goal_evaluation.json"
+    input_data = {
+        "mission": cfg.mission,
+        "latest_evaluation": dict(result.evaluation),
+    }
+    input_path.write_text(json.dumps(input_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    argv = [
+        *cfg.roles.goal_evaluator,
+        "--input", str(input_path),
+        "--output", str(output_path),
+        "--worktree", str(result.run_dir),
+    ]
+    completed = subprocess.run(argv, text=True, capture_output=True, check=False)
+    if completed.returncode != 0 or not output_path.exists():
+        return False
+    try:
+        data = json.loads(output_path.read_text(encoding="utf-8"))
+        return bool(data.get("goal_reached", False))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _invoke_strategist(cfg: EvolutionConfig, result, iteration: int) -> dict | None:
+    input_path = result.run_dir / "strategist_input.json"
+    output_path = result.run_dir / "strategy.json"
+    input_data = {
+        "mission": cfg.mission,
+        "current_round": iteration,
+        "latest_evaluation": dict(result.evaluation),
+    }
+    input_path.write_text(json.dumps(input_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    argv = [
+        *cfg.roles.strategist,
+        "--input", str(input_path),
+        "--output", str(output_path),
+        "--worktree", str(result.run_dir),
+    ]
+    completed = subprocess.run(argv, text=True, capture_output=True, check=False)
+    if completed.returncode != 0 or not output_path.exists():
+        return None
+    try:
+        return json.loads(output_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 if __name__ == "__main__":
