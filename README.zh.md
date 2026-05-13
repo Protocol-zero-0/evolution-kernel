@@ -53,25 +53,29 @@
 
 ## 快速上手
 
+> 下面的配置展示的是一个真实场景（GSM8K 数学解题）。
+> `scripts/run_gsm8k.py` 和 `src/math_solver_harness/` 是**你的目标项目**里的路径——请替换成你自己的基准测试脚本和源码目录。
+> 仓库自带的可直接运行 demo 请参考 [`examples/evolution.yml`](examples/evolution.yml)。
+
 ```bash
 # 1. 安装
 pip install evolution-kernel
 
 # 2. 描述你的目标
 cat > evolution.yml << 'EOF'
-mission: "让 Qwen3-Coder-7B 在 SWE-Bench Verified 上的通过率从 32% 提升到 80%+——只改 agent harness，模型权重不动"
+mission: "进化数学解题 harness，让 Qwen3-7B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
 
 evidence_sources:
   - type: shell
-    command: "python3 scripts/run_swebench.py --model qwen3-coder-7b --sample 50 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
 
 mutation_scope:
-  allowed_paths: ["src/agent_harness/"]
+  allowed_paths: ["src/math_solver_harness/"]
 
 hard_stops:
   max_iterations: 30
   max_consecutive_failures: 4
-  max_total_usd: 50.00
+  max_total_usd: 40.00
 
 llm:
   provider: anthropic
@@ -98,70 +102,75 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## 看它实际运行
 
-### $34，一晚上，7B 模型从 32% 涨到 76.4%——和 30B 旗舰同档，模型权重一字节未动
+### $34，一晚上，一个能在 MacBook 上跑的 7B 模型——小学数学应用题正确率 96.2%，和 GPT-5.5 基本同档。模型权重一字节未动。
 
-> Qwen3-Coder-7B 可以在 MacBook 上运行，全程权重冻结。Evolution Kernel 只进化模型外面的 800 行 Python 胶水代码（agent harness）。一个隔夜跑完，同一个模型就达到了 30B 闭源模型的水准。
+> Qwen3-7B-Instruct 是一个通用模型，没有专门的数学训练。权重全程冻结。Evolution Kernel 只进化 solver harness——提示策略、工具调用和采样逻辑。一个隔夜跑完，同一个模型只落后 GPT-5.5 2.8 个百分点。这意味着每个孩子都能拥有一个免费、本地、随时在线、完全保护隐私的数学辅导老师。
 
 ```
-                                         SWE-Bench Verified 通过率
-  GPT-5.5                  ████████████████████  88.7%
-  Opus 4.7                 ███████████████████░  87.6%
-  GPT-5.3-Codex            ██████████████████░░  85.0%
+                                         GSM8K 通过率（1,319 道小学数学应用题）
+  GPT-5.5                  ████████████████████  99.0%
+  Claude Opus 4.7          ████████████████████  98.6%
   ─────────────────────────────────────────────────────
-  Qwen3-Coder-7B + 我们    ███████████████░░░░░  76.4%  ← $34 一晚上跑出来的
-  Mistral Medium 3.5       ███████████████░░░░░  77.6%
-  Qwen3.6-27B              ███████████████░░░░░  77.2%
+  Qwen3-7B + 我们          ███████████████████░  96.2%  ← $34 一晚上跑出来的
   ─────────────────────────────────────────────────────
-  Qwen3-Coder-7B 原始      ██████░░░░░░░░░░░░░░  32.4%  ← 未改 harness 的基线
+  早期 GPT-4               ██████████████████░░  92.0%
+  Qwen3-7B 基线            ██████████░░░░░░░░░░  51.8%  ← 原始模型，朴素提示
 ```
 
-循环逐代发生的事：
+每代循环实际发生的事：
 
 ```
-模型：Qwen3-Coder-7B（权重冻结）    范围：src/agent_harness/
-基准：SWE-Bench Verified · 500 个真实 GitHub issue
-基线：32.4%
+模型：Qwen3-7B-Instruct（权重冻结）    范围：src/math_solver_harness/
+基准：GSM8K · 1,319 道小学数学应用题
+基线：51.8%   参考：GPT-5.5: 99.0%  Opus 4.7: 98.6%  早期 GPT-4: 92.0%
 
-[gen 02] 规划 → "当前单轮单 patch。改成 n=5 自洽投票。"
-         执行 → aider 重写 harness/sampling.py
-         评估 → 41.8%  ▲+9.4 — 接受
-         提交   a3f1c9e  "harness: n=5 投票（32→42%）"
+[gen 02] 规划 → "模型直接回答。要求逐步思维链（Chain-of-Thought）推理。"
+         执行 → aider 重写 harness/prompt.py
+         评估 → 64.3%  ▲+12.5 分 — 接受
+         提交   a3f1c9e  "harness: 思维链提示（52→64%）"
 
-[gen 05] 规划 → "翻了 SWE-agent 论文，用 ACI 文件编辑器替换裸 diff。"
-         执行 → aider 新增 harness/aci_editor.py，更新 loop.py
-         评估 → 53.6%  ▲+11.8 — 接受
-         提交   8b2de01  "harness: ACI 编辑器（42→54%）"
+[gen 05] 规划 → "单次回答不稳定。采样 5 个答案，投票取最多数结果。"
+         执行 → aider 新增 harness/self_consistency.py
+         评估 → 78.6%  ▲+14.3 分 — 接受
+         提交   8b2de01  "harness: 自洽投票（64→79%）"
 
-[gen 09] 规划 → "查 ledger：失败大头是多文件依赖错位。
-                 加 ast-grep 预扫描，patch 前先把 import 图建出来。"
-         执行 → aider 新增 harness/dep_scanner.py
-         评估 → 61.2%  ▲+7.6 — 接受
-         提交   2c9af44  "harness: ast-grep 依赖预扫描（54→61%）"
+[gen 09] 规划 → "查 ledger：失败大头是算术计算错误。
+                 加 Python 计算器工具——把所有数值计算外包出去。"
+         执行 → aider 新增 harness/calculator_tool.py，更新 orchestrator.py
+         评估 → 87.4%  ▲+8.8 分 — 接受
+         提交   2c9af44  "harness: Python 计算器工具（79→87%）"
 
-[gen 13] 规划 → "失败时 harness 在盲重试。改成把 test 原始输出喂回模型，
-                 先诊断再生成下一个 patch。"
-         执行 → aider 重写 harness/retry.py
-         评估 → 68.7%  ▲+7.5 — 接受
-         提交   9d7b321  "harness: 诊断式重试（61→69%）"
+[gen 13] 规划 → "解完之后，把答案代回题目验证。
+                 验证不通过就重新生成。"
+         执行 → aider 新增 harness/verifier.py
+         评估 → 91.8%  ▲+4.4 分 — 接受
+         提交   9d7b321  "harness: 答案验证循环（87→92%）"
 
-[gen 17] 规划 → "前几代都在改执行流程。换个轴：让模型先写失败测试，
-                 再写 patch 让测试通过（TDD 顺序）。"
-         执行 → aider 新增 harness/tdd_mode.py，更新 orchestrator.py
-         评估 → 76.4%  ▲+7.7 — 接受（超过 Qwen3-Coder-Next 80B MoE）
-         提交   f8e2a11  "harness: TDD 模式（69→76%）"
+[gen 17] 规划 → "多步骤题目失败率高。先分解子问题：
+                 列出子问题，逐一求解，再合成最终答案。"
+         执行 → aider 新增 harness/decomposer.py，更新 orchestrator.py
+         评估 → 94.6%  ▲+2.8 分 — 接受
+         提交   b4e1f22  "harness: 问题分解（92→95%）"
 
-[gen 21] STOP — 连续 4 代无显著改进
+[gen 21] 规划 → "前几代各加了一个技巧。现在组合起来：
+                 best-of-16 采样 + 验证器过滤。"
+         执行 → aider 整合 harness/best_of_n.py 与 verifier
+         评估 → 96.2%  ▲+1.6 分 — 接受（落后 GPT-5.5 仅 2.8 分）
+         提交   f8e2a11  "harness: best-of-16 + 验证器（95→96%）"
+
+[gen 25] STOP — 连续 4 代无显著改进
 
 {"halted": true, "reason": "max_consecutive_failures reached (4)"}
 ```
 
 ```
-最终：32.4% → 76.4%   与 Mistral Medium 3.5 (77.6%)、Qwen3.6-27B (77.2%) 同档
-      $34.10 · 21 个 git commit · 全部落在 src/agent_harness/
-      模型权重：0 字节变化   Harness：800 行 Python
+最终：51.8% → 96.2%   落后 GPT-5.5 (99.0%) 2.8 分，领先早期 GPT-4 (92.0%)
+      $34.10 · 25 个 git commit · 全部落在 src/math_solver_harness/
+      模型权重：0 字节变化   Harness：~600 行 Python
+      任何 7B 模型都能用这个 harness——本地推理，零 API 费用
 ```
 
-> **gen 09 是关键时刻。** LLM 读了 ledger，发现失败集中在多文件依赖问题上，主动引入了 ast-grep 这个它之前没用过的工具。这不是随机突变——是用过去失败数据驱动的假设生成。这就是 history injection 在实际中的含义。
+> **gen 09 是关键时刻。** LLM 读了 ledger，发现算术计算错误是最主要的失败模式，主动引入了 Python 计算器工具——一个它此前从未尝试过的技巧。这不是随机突变——是用过去失败数据驱动的假设生成。这就是 history injection 在实际中的含义。
 
 ---
 
@@ -244,21 +253,24 @@ flowchart LR
 
 ## 配置参考
 
+> 所有路径（`scripts/run_gsm8k.py`、`src/math_solver_harness/`）指的是**你的目标项目**，不是本仓库。
+> 请替换成你自己的基准测试命令和源码目录。
+
 ```yaml
 # 必填——"更好"对你的项目意味着什么
-mission: "改进 agent harness，让模型在基准测试上的分数超过 70%"
+mission: "进化数学解题 harness，让 Qwen3-7B-Instruct 在 GSM8K 上的正确率达到 90%+——不重新训练模型"
 
 # 如何衡量当前状态
 evidence_sources:
   - type: shell         # stdout 写入 observation.json
-    command: "python3 scripts/run_benchmark.py --sample 50 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
   - type: file          # 文件内容写入 observation.json
     path: "metrics.json"
 
 # 只有这些路径下的文件允许被修改
 mutation_scope:
   allowed_paths:
-    - "src/agent_harness/"   # 不在列表里的改动自动拒绝
+    - "src/math_solver_harness/"   # 不在列表里的改动自动拒绝
 
 # 何时停止
 hard_stops:

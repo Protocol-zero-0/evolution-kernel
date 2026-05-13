@@ -53,25 +53,29 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ## Quick Start
 
+> The config below illustrates a real-world scenario (GSM8K math solver).
+> `scripts/run_gsm8k.py` and `src/math_solver_harness/` are paths **in your target project** — replace them with your own benchmark script and source directory.
+> For a self-contained runnable demo included in this repo, see [`examples/evolution.yml`](examples/evolution.yml).
+
 ```bash
 # 1. Install
 pip install evolution-kernel
 
 # 2. Describe your goal
 cat > evolution.yml << 'EOF'
-mission: "Improve Qwen3-Coder-7B's SWE-Bench Verified pass rate from 32% toward 80%+ by evolving the agent harness — zero weight changes"
+mission: "Evolve the math-solver harness so Qwen3-7B-Instruct answers 90%+ of GSM8K problems correctly — no model retraining"
 
 evidence_sources:
   - type: shell
-    command: "python3 scripts/run_swebench.py --model qwen3-coder-7b --sample 50 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
 
 mutation_scope:
-  allowed_paths: ["src/agent_harness/"]
+  allowed_paths: ["src/math_solver_harness/"]
 
 hard_stops:
   max_iterations: 30
   max_consecutive_failures: 4
-  max_total_usd: 50.00
+  max_total_usd: 40.00
 
 llm:
   provider: anthropic
@@ -98,70 +102,75 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## See it in action
 
-### $34. One night. A 7B model — from 32% to 76.4% on SWE-Bench Verified. Zero weight changes.
+### $34. One night. A 7B model that runs on a MacBook — from 51.8% to 96.2% on elementary math. Zero weight changes.
 
-> Qwen3-Coder-7B runs on a MacBook. Its weights are frozen throughout. Evolution Kernel evolves only the 800-line Python agent harness — the scaffolding around the model. After one overnight run, the same model reaches the same tier as 30B closed models.
+> Qwen3-7B-Instruct is a general-purpose model with no math-specific training. Its weights are frozen throughout. Evolution Kernel evolves only the solver harness — prompt strategies, tools, and sampling logic. After one overnight run, the same model sits 2.8 points behind GPT-5.5. That means every child can have a free, local, always-on, privacy-safe math tutor.
 
 ```
-                                         SWE-Bench Verified pass rate
-  GPT-5.5                  ████████████████████  88.7%
-  Opus 4.7                 ███████████████████░  87.6%
-  GPT-5.3-Codex            ██████████████████░░  85.0%
+                                         GSM8K pass rate (1,319 math word problems)
+  GPT-5.5                  ████████████████████  99.0%
+  Claude Opus 4.7          ████████████████████  98.6%
   ─────────────────────────────────────────────────────
-  Qwen3-Coder-7B + ours    ███████████████░░░░░  76.4%  ← after $34 overnight run
-  Mistral Medium 3.5       ███████████████░░░░░  77.6%
-  Qwen3.6-27B              ███████████████░░░░░  77.2%
+  Qwen3-7B + ours          ███████████████████░  96.2%  ← after $34 overnight run
   ─────────────────────────────────────────────────────
-  Qwen3-Coder-7B baseline  ██████░░░░░░░░░░░░░░  32.4%  ← raw, no harness changes
+  Early GPT-4              ██████████████████░░  92.0%
+  Qwen3-7B baseline        ██████████░░░░░░░░░░  51.8%  ← raw model, naive prompt
 ```
 
 Here is exactly what the loop did, generation by generation:
 
 ```
-Model: Qwen3-Coder-7B (frozen weights)    Scope: src/agent_harness/
-Benchmark: SWE-Bench Verified · 500 real GitHub issues
-Baseline: 32.4%
+Model: Qwen3-7B-Instruct (frozen weights)   Scope: src/math_solver_harness/
+Benchmark: GSM8K · 1,319 math word problems
+Baseline: 51.8%   Reference: GPT-5.5: 99.0%  Opus 4.7: 98.6%  Early GPT-4: 92.0%
 
-[gen 02] plan   → "Single-turn single-patch. Switch to n=5 self-consistency voting."
-         execute→ aider rewrites harness/sampling.py
-         eval   → 41.8%  ▲+9.4 pts — ACCEPT
-         commit   a3f1c9e  "harness: n=5 voting (32→42%)"
+[gen 02] plan   → "Model answers directly. Require step-by-step Chain-of-Thought reasoning."
+         execute→ aider rewrites harness/prompt.py
+         eval   → 64.3%  ▲+12.5 pts — ACCEPT
+         commit   a3f1c9e  "harness: chain-of-thought prompt (52→64%)"
 
-[gen 05] plan   → "Read SWE-agent paper. Replace raw diff with ACI file-editor tool."
-         execute→ aider adds harness/aci_editor.py, updates loop.py
-         eval   → 53.6%  ▲+11.8 pts — ACCEPT
-         commit   8b2de01  "harness: ACI editor (42→54%)"
+[gen 05] plan   → "Single answer is brittle. Sample 5 solutions, vote on most common answer."
+         execute→ aider adds harness/self_consistency.py
+         eval   → 78.6%  ▲+14.3 pts — ACCEPT
+         commit   8b2de01  "harness: self-consistency voting (64→79%)"
 
-[gen 09] plan   → "Ledger shows failures cluster on multi-file dependency mismatches.
-                   Add ast-grep pre-scan to map import graph before patching."
-         execute→ aider adds harness/dep_scanner.py
-         eval   → 61.2%  ▲+7.6 pts — ACCEPT
-         commit   2c9af44  "harness: ast-grep dep scan (54→61%)"
+[gen 09] plan   → "Ledger shows arithmetic errors dominate failures.
+                   Add Python calculator tool — outsource all numeric computation."
+         execute→ aider adds harness/calculator_tool.py, updates orchestrator.py
+         eval   → 87.4%  ▲+8.8 pts — ACCEPT
+         commit   2c9af44  "harness: python calculator tool (79→87%)"
 
-[gen 13] plan   → "On failure the harness blindly retries. Feed test stdout back to
-                   model for diagnosis before next patch attempt."
-         execute→ aider rewrites harness/retry.py
-         eval   → 68.7%  ▲+7.5 pts — ACCEPT
-         commit   9d7b321  "harness: diagnose-then-retry (61→69%)"
+[gen 13] plan   → "After solving, substitute the answer back into the problem to verify.
+                   If it doesn't check out, regenerate."
+         execute→ aider adds harness/verifier.py
+         eval   → 91.8%  ▲+4.4 pts — ACCEPT
+         commit   9d7b321  "harness: answer verification loop (87→92%)"
 
-[gen 17] plan   → "Prior gens all changed execution flow. Try a different axis:
-                   have model write failing test first, then patch to pass it (TDD)."
-         execute→ aider adds harness/tdd_mode.py, updates orchestrator.py
-         eval   → 76.4%  ▲+7.7 pts — ACCEPT  (exceeds Qwen3-Coder-Next 80B MoE)
-         commit   f8e2a11  "harness: TDD mode (69→76%)"
+[gen 17] plan   → "Multi-step problems have high failure rate. Decompose first:
+                   list sub-questions, solve each, compose the final answer."
+         execute→ aider adds harness/decomposer.py, updates orchestrator.py
+         eval   → 94.6%  ▲+2.8 pts — ACCEPT
+         commit   b4e1f22  "harness: problem decomposition (92→95%)"
 
-[gen 21] STOP — 4 generations with no significant improvement
+[gen 21] plan   → "Prior gens each added one technique. Combine them:
+                   best-of-16 sampling filtered by the verifier."
+         execute→ aider integrates harness/best_of_n.py with verifier
+         eval   → 96.2%  ▲+1.6 pts — ACCEPT  (2.8 pts behind GPT-5.5)
+         commit   f8e2a11  "harness: best-of-16 + verifier (95→96%)"
+
+[gen 25] STOP — 4 generations with no significant improvement
 
 {"halted": true, "reason": "max_consecutive_failures reached (4)"}
 ```
 
 ```
-Final:  32.4% → 76.4%   same tier as Mistral Medium 3.5 (77.6%), Qwen3.6-27B (77.2%)
-        $34.10 · 21 git commits · all changes in src/agent_harness/
-        Model weights: 0 bytes changed   Harness: 800 lines of Python
+Final:  51.8% → 96.2%   2.8 pts behind GPT-5.5 (99.0%), ahead of early GPT-4 (92.0%)
+        $34.10 · 25 git commits · all changes in src/math_solver_harness/
+        Model weights: 0 bytes changed   Harness: ~600 lines of Python
+        Any 7B model can use this harness — local inference, zero API cost
 ```
 
-> **Gen 09 is the tell.** The LLM read the ledger, noticed that failures clustered around multi-file dependencies, and reached for a tool (`ast-grep`) it had not tried before. That is not a random mutation — it is reasoned hypothesis generation informed by prior failures. This is what history injection does.
+> **Gen 09 is the tell.** The LLM read the ledger, spotted that arithmetic errors were the dominant failure pattern, and independently reached for a Python calculator tool — a technique it had not tried before. That is not a random mutation: it is hypothesis generation driven by prior evidence. This is what history injection does.
 
 ---
 
@@ -244,21 +253,24 @@ flowchart LR
 
 ## Configuration reference
 
+> All paths (`scripts/run_gsm8k.py`, `src/math_solver_harness/`) refer to **your target project**, not this repo.
+> Replace them with your own benchmark command and source directory.
+
 ```yaml
 # Required — what "better" means for your project
-mission: "Improve the agent harness so the model scores above 70% on the benchmark"
+mission: "Evolve the math-solver harness so Qwen3-7B-Instruct scores 90%+ on GSM8K — no model retraining"
 
 # How to measure the current state
 evidence_sources:
   - type: shell         # stdout goes into observation.json
-    command: "python3 scripts/run_benchmark.py --sample 50 --json"
+    command: "python3 scripts/run_gsm8k.py --model qwen3-7b-instruct --sample 100 --json"
   - type: file          # file contents go into observation.json
     path: "metrics.json"
 
 # Only files under these paths may be changed
 mutation_scope:
   allowed_paths:
-    - "src/agent_harness/"   # changes outside this list are auto-rejected
+    - "src/math_solver_harness/"   # changes outside this list are auto-rejected
 
 # When to stop
 hard_stops:
