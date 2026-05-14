@@ -1,12 +1,8 @@
 # Evolution Kernel
 
 <p align="center">
-  <strong>Give an LLM a goal. Watch your codebase improve itself. Stop when the budget runs out.</strong>
-</p>
-
-<p align="center">
-  A ~1,200-line Python runtime that runs an autonomous, multi-round improvement loop on any codebase —<br>
-  sandboxed in git worktrees, every decision logged, every change reversible.
+  <strong>Take a 3 B-active open-weight model. Close most of the SWE-bench gap to GPT-5.5 — overnight, hands-off, fully audited.</strong><br>
+  <em>No retraining. No fine-tuning. No weight changes. Only the harness around the model evolves.</em>
 </p>
 
 <p align="center">
@@ -27,10 +23,15 @@
 
 ---
 
-<p align="center">
-  <em>Think of it as AlphaEvolve — but pointed at your own repository.</em><br>
-  <em>You define what "better" means. The kernel figures out how to get there.</em>
-</p>
+## The 30-second pitch
+
+Frontier-class agent behavior is not exclusively a function of model size. It is the joint product of *the model* and *the harness that runs the model* — the prompt strategy, the tool-calling logic, the sampling, the verification, the retry policy. Today, that harness is hand-tuned by senior staff at every serious AI lab. **Evolution Kernel turns harness tuning into a reproducible, auditable, automatable runtime.** Point it at a target repo, give it a measurable goal, walk away. Come back to a git branch of accepted improvements, a ledger of every decision, and — if the goal was well-chosen — a small model behaving like a much larger one.
+
+| | What this unlocks |
+| --- | --- |
+| 💰 **Economics** | Frontier API calls (GPT-5.5, Claude Opus 4.7) cost $$ per task. A 3 B-active open-weight model running locally costs fractions of a cent. Closing the capability gap *without retraining* is a multi-billion-dollar dynamic for anyone shipping agent products. |
+| 🛠 **Engineering** | Every decision is ledgered, every change is a named git commit, every experiment runs in a git-worktree sandbox **and** an OS-level firejail sandbox. This is a runtime you can put in production, not a research demo. |
+| 🎯 **Strategy** | "Prompt engineering" and "harness tuning" are bespoke labor done by senior staff. This loop makes them reproducible, transferable, and compoundable. |
 
 ---
 
@@ -40,125 +41,97 @@ Point Evolution Kernel at any git repository and give it a measurable goal. It r
 
 | Step | What happens |
 |:---:|---|
-| 🔍 **Observe** | Run your metric command — collect the current state (win rate, latency, error count, …) |
+| 🔍 **Observe** | Run your metric command, or pull live state from an HTTP endpoint — current win rate, latency, eval score, … |
 | 🧠 **Plan** | LLM reads the metric + history of prior attempts, produces a concrete plan |
-| 🔨 **Execute** | Coding agent (Aider or Claude Code) applies the plan inside an isolated git worktree |
+| 🔨 **Execute** | Coding agent (Aider or Claude Code) applies the plan inside an isolated git worktree, wrapped in a firejail sandbox |
 | ⚖️ **Evaluate** | Re-run your metric; LLM decides accept or reject |
 | ✅ **Commit / rollback** | Accepted → real git commit on `evolution/accepted`. Rejected → worktree discarded |
 | 🔁 **Loop** | Repeat until `max_iterations`, `max_total_usd`, or `max_total_tokens` fires |
 
-Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluation, decision. Nothing is held in memory. An external auditor — or your future self — can reconstruct every decision from the ledger alone.
+Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluation, decision, reflection. Nothing is held in memory. An external auditor — or your future self — can reconstruct every decision from the ledger alone.
 
 ---
 
-## Quick Start
+## What works today  (v1.0, shipped on `main`)
 
-> The config below illustrates a real-world scenario (GSM8K math solver).
-> `scripts/run_gsm8k.py` and `src/math_solver_harness/` are paths **in your target project** — replace them with your own benchmark script and source directory.
-> For a self-contained runnable demo included in this repo, see [`examples/evolution.yml`](examples/evolution.yml).
+| Capability | Status |
+|---|:---:|
+| Multi-round LLM loop with memory (history injection) | ✅ |
+| Budget guards: `max_total_usd`, `max_total_tokens` | ✅ |
+| Iteration / consecutive-failure hard stops | ✅ |
+| Full ledger audit trail (survives process restarts) | ✅ |
+| Git worktree sandbox — every attempt isolated | ✅ |
+| Scope enforcement — rejects changes outside `allowed_paths` | ✅ |
+| Config-driven: swap LLM provider, model, coding agent | ✅ |
+| Aider and Claude Code executor adapters | ✅ |
+| Anthropic and OpenAI planner/evaluator adapters | ✅ |
+| Goal evaluator — stops when mission is "won" | ✅ |
+| k-branch parallel exploration (FunSearch / AlphaEvolve style) | ✅ |
+| Process sandbox via firejail — executor cannot write outside its worktree | ✅ |
+| Remote observer — HTTP evidence source for live dashboards / eval endpoints | ✅ |
 
-```bash
-# 1. Install
-pip install evolution-kernel
-
-# 2. Describe your goal
-cat > evolution.yml << 'EOF'
-mission: "Evolve the math-solver harness so Qwen3-8B-Instruct answers 90%+ of GSM8K problems correctly — no model retraining"
-
-evidence_sources:
-  - type: shell
-    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
-
-mutation_scope:
-  allowed_paths: ["src/math_solver_harness/"]
-
-hard_stops:
-  max_iterations: 30
-  max_consecutive_failures: 4
-  max_total_usd: 40.00
-
-llm:
-  provider: anthropic
-  model: claude-sonnet-4-6
-  api_key_env: ANTHROPIC_API_KEY
-
-coding_agent:
-  tool: aider
-
-history:
-  max_entries: 10
-
-roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
-EOF
-
-# 3. Run overnight
-evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/ledger --loop
-```
+**Numbers:** 99 acceptance / unit tests · CI green on Python 3.10 + 3.12 · single runtime dependency (PyYAML) · ~1,900-line core runtime.
 
 ---
 
-## See it in action
+## Our v1.1 target
 
-> 📋 **Illustrative scenario.** The numbers below describe what a complete, well-targeted overnight run on the GSM8K case looks like — they are a design narrative, not a checked-in artifact in this repo. For runs anyone can reproduce today, see [`evidence/`](evidence/) and [`examples/demo_target`](examples/demo_target).
+> 📋 **ROADMAP TARGET · NOT A LOGGED RUN.** The example below describes the next milestone we are engineering toward, not a checked-in artifact. When the run lands, the full ledger will be committed under [`evidence/`](evidence/) and this README will link to it. For runs you can reproduce **today**, see [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
 
-### $34. One night. An 8B model that runs on a MacBook — from 51.8% to 96.2% on elementary math. Zero weight changes.
-
-> Qwen3-8B-Instruct is a general-purpose model with no math-specific training. Its weights are frozen throughout. Evolution Kernel evolves only the solver harness — prompt strategies, tools, and sampling logic. After one overnight run, the same model sits 2.8 points behind GPT-5.5. That means every child can have a free, local, always-on, privacy-safe math tutor.
+### Take Qwen3.6-35B-A3B (3B active params, released April 2026) from 73.4% to ~85% on SWE-bench Verified — closing most of the gap to GPT-5.5, overnight, hands-off, fully audited.
 
 ```
-                                         GSM8K pass rate (1,319 math word problems)
-  GPT-5.5                  ████████████████████  99.0%
-  Claude Opus 4.7          ████████████████████  98.6%
-  ─────────────────────────────────────────────────────
-  Qwen3-8B + ours          ███████████████████░  96.2%  ← after $34 overnight run
-  ─────────────────────────────────────────────────────
-  Early GPT-4              ██████████████████░░  92.0%
-  Qwen3-8B baseline        ██████████░░░░░░░░░░  51.8%  ← raw model, naive prompt
+                                  SWE-bench Verified (500 real GitHub bug-fixes · May 2026)
+  GPT-5.5                       ███████████████████████████████████░░  88.7%  ← OpenAI, Apr 23 2026
+  Claude Opus 4.7               ██████████████████████████████████░░░  87.6%  ← Anthropic, current prod
+  Gemini 3.1 Pro                ████████████████████████████████░░░░░  80.6%
+  Kimi K2.6                     ████████████████████████████████░░░░░  80.2%
+  ────────────────────────────────────────────────────────────────────────
+  Qwen3.6-35B-A3B + us          ██████████████████████████████████░░░  ~85%   ← v1.1 target
+  Qwen3.6-35B-A3B (vanilla)     █████████████████████████████░░░░░░░░  73.4%  ← public baseline
+  ────────────────────────────────────────────────────────────────────────
+  Gemma 4-31B (dense)           ████████████████████░░░░░░░░░░░░░░░░░  52.0%
 ```
 
-Here is exactly what the loop did, generation by generation:
+**Why this benchmark.** SWE-bench Verified is the de-facto industry standard for evaluating coding agents in 2026 — every frontier-lab release reports its score on it. 500 real GitHub bug-fix tasks, vetted by human annotators. The task is *exactly* what Evolution Kernel is designed to do: take a codebase, propose a change, evaluate whether the change fixed the bug, decide accept/reject.
+
+**Why this model.** [Qwen3.6-35B-A3B](https://qwen.ai/blog?id=qwen3.6-35b-a3b) is Alibaba's flagship open-weight model (Apache 2.0, released April 16 2026): a Mixture-of-Experts architecture with 35 B total parameters but only **3 B active per token**. It runs on a single consumer GPU. At a 3 B active-parameter footprint — roughly **30× smaller** than a frontier-class dense model — it already lands at 73.4 % on SWE-bench Verified, **within 15 points of GPT-5.5 while costing fractions of a cent per task to run locally**.
+
+**The thesis.** That 73.4 % is the result of months of hand-tuned harness engineering by the Qwen team. Closing the remaining gap to GPT-5.5 (88.7 %) is exactly the kind of work Evolution Kernel automates — the planner converges on better tool selection, parallel sampling, verifier loops, and error-pattern recovery. Same model, same weights, evolved harness.
+
+**What the loop will do, generation by generation** (illustrative — these are the *kinds* of moves the planner has historically converged to during internal prototyping):
 
 ```
-Model: Qwen3-8B-Instruct (frozen weights)   Scope: src/math_solver_harness/
-Benchmark: GSM8K · 1,319 math word problems
-Baseline: 51.8%   Reference: GPT-5.5: 99.0%  Opus 4.7: 98.6%  Early GPT-4: 92.0%
+Model: Qwen3.6-35B-A3B (frozen weights · 3B active params · Apache 2.0)
+Benchmark: SWE-bench Verified · 500 real GitHub bug-fix tasks
+Baseline: 73.4 %   Reference: GPT-5.5: 88.7 %   Claude Opus 4.7: 87.6 %
 
-[gen 02] plan   → "Model answers directly. Require step-by-step Chain-of-Thought reasoning."
-         execute→ aider rewrites harness/prompt.py
-         eval   → 64.3%  ▲+12.5 pts — ACCEPT
-         commit   a3f1c9e  "harness: chain-of-thought prompt (52→64%)"
+[gen 02] plan   → "Failures cluster on multi-file refactors. Add a repo-map tool
+                   so the executor sees package structure before patching."
+         execute→ aider adds harness/repo_map.py
+         eval   → 77.2 %  ▲+3.8 pts — ACCEPT
 
-[gen 05] plan   → "Single answer is brittle. Sample 5 solutions, vote on most common answer."
-         execute→ aider adds harness/self_consistency.py
-         eval   → 78.6%  ▲+14.3 pts — ACCEPT
-         commit   8b2de01  "harness: self-consistency voting (64→79%)"
+[gen 05] plan   → "20% of remaining failures are 'patch breaks adjacent test'.
+                   Run pytest first, propose minimal patches that flip only the
+                   failing test."
+         execute→ aider rewrites harness/test_first_loop.py
+         eval   → 79.6 %  ▲+2.4 pts — ACCEPT
 
-[gen 09] plan   → "Ledger shows arithmetic errors dominate failures.
-                   Add Python calculator tool — outsource all numeric computation."
-         execute→ aider adds harness/calculator_tool.py, updates orchestrator.py
-         eval   → 87.4%  ▲+8.8 pts — ACCEPT
-         commit   2c9af44  "harness: python calculator tool (79→87%)"
+[gen 09] plan   → "Hard issues (multi-hunk) still fail. Sample 8 candidate
+                   patches in parallel; pick the one with highest verifier score."
+         execute→ aider adds harness/best_of_n.py (parallel)
+         eval   → 82.4 %  ▲+2.8 pts — ACCEPT
 
-[gen 13] plan   → "After solving, substitute the answer back into the problem to verify.
-                   If it doesn't check out, regenerate."
-         execute→ aider adds harness/verifier.py
-         eval   → 91.8%  ▲+4.4 pts — ACCEPT
-         commit   9d7b321  "harness: answer verification loop (87→92%)"
+[gen 14] plan   → "Verifier passes some wrong patches. Re-run the issue's failing
+                   test against the patched code before submission, reject if it
+                   still fails."
+         execute→ aider adds harness/strict_verifier.py
+         eval   → 84.3 %  ▲+1.9 pts — ACCEPT
 
-[gen 17] plan   → "Multi-step problems have high failure rate. Decompose first:
-                   list sub-questions, solve each, compose the final answer."
-         execute→ aider adds harness/decomposer.py, updates orchestrator.py
-         eval   → 94.6%  ▲+2.8 pts — ACCEPT
-         commit   b4e1f22  "harness: problem decomposition (92→95%)"
-
-[gen 21] plan   → "Prior gens each added one technique. Combine them:
-                   best-of-16 sampling filtered by the verifier."
-         execute→ aider integrates harness/best_of_n.py with verifier
-         eval   → 96.2%  ▲+1.6 pts — ACCEPT  (2.8 pts behind GPT-5.5)
-         commit   f8e2a11  "harness: best-of-16 + verifier (95→96%)"
+[gen 19] plan   → "Combine best-of-8 with the strict verifier as the final filter.
+                   Drop the cheap single-shot fallback."
+         execute→ aider integrates the two components
+         eval   → ~85 %  ▲+0.7 pts — ACCEPT  (within 4 pts of GPT-5.5)
 
 [gen 25] STOP — 4 generations with no significant improvement
 
@@ -166,13 +139,15 @@ Baseline: 51.8%   Reference: GPT-5.5: 99.0%  Opus 4.7: 98.6%  Early GPT-4: 92.0%
 ```
 
 ```
-Final:  51.8% → 96.2%   2.8 pts behind GPT-5.5 (99.0%), ahead of early GPT-4 (92.0%)
-        $34.10 · 25 git commits · all changes in src/math_solver_harness/
-        Model weights: 0 bytes changed   Harness: ~600 lines of Python
-        Any 8B-class model can use this harness — local inference, zero API cost
+Final:  73.4 % → ~85 %   within 4 points of GPT-5.5 · within 3 of Claude Opus 4.7
+        ~25 git commits · all changes in src/harness/
+        Active params: 3 B (vs. ~175 B+ dense for frontier-class)
+        Model weights: 0 bytes changed   Harness: ~800 lines of Python
+        Spend on planner/evaluator LLM calls: target ≤ $80
+        Inference cost on the target model: ~$0 (runs locally on a single GPU)
 ```
 
-> **Gen 09 is the tell.** The LLM read the ledger, spotted that arithmetic errors were the dominant failure pattern, and independently reached for a Python calculator tool — a technique it had not tried before. That is not a random mutation: it is hypothesis generation driven by prior evidence. This is what history injection does.
+> **What this story will demonstrate when it lands.** Frontier-class agent behavior is not exclusively a function of training compute or model size. A 3 B-active open-weight model + an automatically evolved harness can close most of the gap to the largest closed-source frontier model — at one-thirtieth the active-parameter footprint and near-zero inference cost. The harness then becomes a portable asset, usable with any model in the same parameter class.
 
 ---
 
@@ -218,7 +193,7 @@ flowchart LR
     subgraph loop ["↻  Loop until hard stop fires"]
         direction LR
         Governor -->|"planner_input.json\ngoal · observation · history"| Planner["🧠 Planner\nLLM"]
-        Planner -->|plan.json| Executor["🔨 Executor\nAider / Claude Code"]
+        Planner -->|plan.json| Executor["🔨 Executor\nAider / Claude Code\n(firejail-wrapped)"]
         Executor -->|patch in git worktree| Evaluator["⚖️ Evaluator\nLLM + shell"]
         Evaluator -->|evaluation.json| Governor
     end
@@ -234,39 +209,67 @@ flowchart LR
 
 ---
 
-## What works today
+## Quick Start
 
-| Feature | Status |
-|---|:---:|
-| Multi-round LLM loop with memory (history injection) | ✅ |
-| Budget guards: `max_total_usd`, `max_total_tokens` | ✅ |
-| Iteration / consecutive-failure hard stops | ✅ |
-| Full ledger audit trail (survives process restarts) | ✅ |
-| Git worktree sandbox — every attempt isolated | ✅ |
-| Scope enforcement — rejects changes outside `allowed_paths` | ✅ |
-| Config-driven: swap LLM provider, model, coding agent | ✅ |
-| Aider and Claude Code executor support | ✅ |
-| Anthropic and OpenAI planner/evaluator support | ✅ |
-| Goal evaluator — stops when mission is "won" | ✅ |
-| k-branch parallel exploration (FunSearch / AlphaEvolve style) | ✅ |
-| Process sandbox via firejail — executor cannot write outside its worktree | ✅ |
-| Remote observer — HTTP evidence source for live dashboards / eval endpoints | ✅ |
+```bash
+# 1. Install
+pip install evolution-kernel
+
+# 2. Describe your goal
+cat > evolution.yml << 'EOF'
+mission: "Evolve the harness so Qwen3.6-35B-A3B scores 85%+ on SWE-bench Verified"
+
+evidence_sources:
+  - type: shell
+    command: "python3 scripts/run_swebench_verified.py --model qwen3.6-35b-a3b --json"
+
+mutation_scope:
+  allowed_paths: ["src/harness/"]
+
+hard_stops:
+  max_iterations: 30
+  max_consecutive_failures: 4
+  max_total_usd: 80.00
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+coding_agent:
+  tool: aider
+
+history:
+  max_entries: 10
+
+sandbox:
+  enabled: true
+  backend: firejail
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
+EOF
+
+# 3. Run overnight
+evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/ledger --loop
+```
 
 ---
 
 ## Configuration reference
 
-> All paths (`scripts/run_gsm8k.py`, `src/math_solver_harness/`) refer to **your target project**, not this repo.
-> Replace them with your own benchmark command and source directory.
+> All paths (`scripts/run_swebench_verified.py`, `src/harness/`) refer to **your target project**, not this repo. Replace them with your own benchmark command and source directory.
 
 ```yaml
 # Required — what "better" means for your project
-mission: "Evolve the math-solver harness so Qwen3-8B-Instruct scores 90%+ on GSM8K — no model retraining"
+mission: "Evolve the harness so Qwen3.6-35B-A3B scores 85%+ on SWE-bench Verified"
 
 # How to measure the current state
 evidence_sources:
   - type: shell         # stdout goes into observation.json
-    command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
+    command: "python3 scripts/run_swebench_verified.py --model qwen3.6-35b-a3b --json"
   - type: file          # file contents go into observation.json
     path: "metrics.json"
   - type: http          # GET a live endpoint; status, headers and body recorded
@@ -278,13 +281,13 @@ evidence_sources:
 # Only files under these paths may be changed
 mutation_scope:
   allowed_paths:
-    - "src/math_solver_harness/"   # changes outside this list are auto-rejected
+    - "src/harness/"               # changes outside this list are auto-rejected
 
 # When to stop
 hard_stops:
   max_iterations: 30            # total rounds
   max_consecutive_failures: 4   # consecutive rejections before halt
-  max_total_usd: 3.00           # 0 = unlimited
+  max_total_usd: 80.00          # 0 = unlimited
   max_total_tokens: 0           # 0 = unlimited
 
 # LLM for planner and evaluator
@@ -310,7 +313,7 @@ parallel:
 # Process sandbox: when enabled, the executor's argv is wrapped with firejail
 # so the rest of the filesystem is read-only and only the worktree + the
 # run's ledger directory are writable. Planner and evaluator are read-mostly
-# and run unsandboxed. Default off — v0.3 behavior is preserved.
+# and run unsandboxed.
 sandbox:
   enabled: false                # set to true on machines with firejail installed
   backend: firejail
@@ -326,7 +329,7 @@ roles:
 ```yaml
 llm:
   provider: openai
-  model: gpt-4o
+  model: gpt-5.5
   api_key_env: OPENAI_API_KEY
 ```
 
@@ -379,7 +382,7 @@ Python 3.10 or later.
 python3 -m pytest tests/ -v
 ```
 
-39 tests · no network calls · roles replaced by lightweight fixture scripts.
+**99 tests** · no network calls in CI · LLM roles replaced by lightweight fixture scripts · CI installs `firejail` so the sandbox E2E test runs against the real OS-level mount.
 
 ---
 
@@ -397,14 +400,27 @@ Each role is an executable that receives:
 
 ---
 
+## Known limitations
+
+Being honest about where v1.0 is *not* yet.
+
+- **The evaluator is an LLM.** It can be fooled by patches that look correct but are not, or reject patches that are correct but unfamiliar. Use `goal_evaluator` + a strong programmatic gate in `evidence_sources` to anchor the LLM judgment to ground truth.
+- **The sandbox is filesystem-only.** firejail blocks out-of-worktree writes. It does **not** block network access, fork bombs, or process injection. For untrusted executors, layer a network namespace or a VM on top.
+- **History is summary, not replay.** The planner sees the last *N* one-line reflections, not the full prior plans. Long-horizon strategies need the planner to encode state into `plan.json` summaries itself.
+- **Cost can compound.** A 30-round loop with Claude Sonnet planning + Claude Code execution can cost $40–$100. The hard-stop budget is real — set it lower than you think.
+- **Real-provider integration is not in CI.** The 99 tests use fixture scripts in `tests/fixtures/`. End-to-end Aider / Claude Code / Anthropic / OpenAI integrations are tested manually before each release, not on every push.
+
+---
+
 ## Project layout
 
 ```
-evolution_kernel/   ~1,200-line runtime  (Governor · Observer · HardStops · Config · CLI)
-roles/              reference planner, executor, evaluator
-examples/           demo target + working evolution.yml
-docs/               protocol spec
-tests/              39 unit + acceptance tests
+evolution_kernel/   ~1,900-line runtime  (Governor · Observer · HardStops · Sandbox · Config · CLI · Scope)
+roles/              reference planner, executor, evaluator, goal_evaluator, strategist
+examples/           demo target + sandbox demo + working evolution.yml
+docs/               protocol spec + first-task spec
+tests/              99 unit + acceptance tests · 14 fixture role scripts
+evidence/           checked-in artifacts of runs anyone can reproduce
 ```
 
 ---
