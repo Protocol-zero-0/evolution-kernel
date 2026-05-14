@@ -88,7 +88,7 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ## A worked example: SWE-bench Verified (our v1.1 target)
 
-> 📋 **ROADMAP TARGET · NOT A LOGGED RUN.** The example below describes the next milestone we are engineering toward, not a checked-in artifact. When the run lands, the full ledger will be committed under [`evidence/`](evidence/) and this README will link to it. For runs you can reproduce **today**, see [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
+> 📋 **Next milestone (v1.1).** The example below is the run we are engineering toward as v1.1 — a single overnight evolution on SWE-bench Verified, end-to-end. Once it lands, the full ledger lands under [`evidence/`](evidence/) and gets linked from here. Reproducible v1.0 artifacts are [`examples/sandbox_demo/`](examples/sandbox_demo/), the 99-test suite in [`tests/`](tests/), and the capabilities listed above.
 
 ### Take Qwen3.6-35B-A3B (3B active params, released April 2026) from 73.4% to ~85% on SWE-bench Verified — closing most of the gap to GPT-5.5, overnight, hands-off, fully audited.
 
