@@ -23,15 +23,17 @@
 
 ---
 
-## The 30-second pitch
+## Motivation
 
-Frontier-class agent behavior is not exclusively a function of model size. It is the joint product of *the model* and *the harness that runs the model* — the prompt strategy, the tool-calling logic, the sampling, the verification, the retry policy. Today, that harness is hand-tuned by senior staff at every serious AI lab. **Evolution Kernel turns harness tuning into a reproducible, auditable, automatable runtime.** Point it at a target repo, give it a measurable goal, walk away. Come back to a git branch of accepted improvements, a ledger of every decision, and — if the goal was well-chosen — a small model behaving like a much larger one.
+Frontier-class agent behavior is the joint product of *the model* and *the harness that runs it* — prompt structure, tool loop, sampling and best-of-N, verifier, retry policy. Today that harness is hand-tuned by senior engineers at every serious AI lab, and the resulting code is usually the actual ceiling against which the base model is judged.
 
-| | What this unlocks |
-| --- | --- |
-| 💰 **Economics** | Frontier API calls (GPT-5.5, Claude Opus 4.7) cost $$ per task. A 3 B-active open-weight model running locally costs fractions of a cent. Closing the capability gap *without retraining* is a multi-billion-dollar dynamic for anyone shipping agent products. |
-| 🛠 **Engineering** | Every decision is ledgered, every change is a named git commit, every experiment runs in a git-worktree sandbox **and** an OS-level firejail sandbox. This is a runtime you can put in production, not a research demo. |
-| 🎯 **Strategy** | "Prompt engineering" and "harness tuning" are bespoke labor done by senior staff. This loop makes them reproducible, transferable, and compoundable. |
+Evolution Kernel makes harness tuning a reproducible runtime. Point it at a target repo with a measurable goal, walk away. Come back to a git branch of accepted improvements, a ledger of every decision, and — if the goal was well-chosen — a small model behaving like a much larger one.
+
+What that buys you, concretely:
+
+- **Inference cost collapses.** A 3 B-active model runs locally at fractions of a cent per task; the frontier APIs (GPT-5.5, Claude Opus 4.7) bill in dollars. Closing the capability gap *without retraining* moves an agent stack from "expensive to run at scale" to "near-zero marginal cost at scale".
+- **Production reliability is mechanical, not aspirational.** Every decision is ledgered, every accepted change is a named git commit, every experiment runs in a git-worktree sandbox plus a firejail OS-level sandbox. The whole runtime is ~1,900 lines and was designed to be put in production, not demoed.
+- **A harness is a portable asset.** Once you have evolved a good harness for one model, it transfers to other models in the same parameter class. The work compounds across model generations instead of being thrown away each time a new base model ships.
 
 ---
 
@@ -97,7 +99,7 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 **Why this model.** [Qwen3.6-35B-A3B](https://qwen.ai/blog?id=qwen3.6-35b-a3b) is Alibaba's flagship open-weight model (Apache 2.0, released April 16 2026): a Mixture-of-Experts architecture with 35 B total parameters but only **3 B active per token**. It runs on a single consumer GPU. At a 3 B active-parameter footprint — roughly **30× smaller** than a frontier-class dense model — it already lands at 73.4 % on SWE-bench Verified, **within 15 points of GPT-5.5 while costing fractions of a cent per task to run locally**.
 
-**The thesis.** That 73.4 % is the result of months of hand-tuned harness engineering by the Qwen team. Closing the remaining gap to GPT-5.5 (88.7 %) is exactly the kind of work Evolution Kernel automates — the planner converges on better tool selection, parallel sampling, verifier loops, and error-pattern recovery. Same model, same weights, evolved harness.
+**Why this gap is closable.** That 73.4 % already represents months of hand-tuned harness engineering by the Qwen team. The remaining gap to GPT-5.5 (88.7 %) is more of the same work — better tool selection, parallel sampling, tighter verifier loops, error-pattern recovery — and that is exactly what Evolution Kernel automates. Same model, same weights, an evolved harness.
 
 **What the loop will do, generation by generation** (illustrative — these are the *kinds* of moves the planner has historically converged to during internal prototyping):
 
@@ -147,7 +149,7 @@ Final:  73.4 % → ~85 %   within 4 points of GPT-5.5 · within 3 of Claude Opus
         Inference cost on the target model: ~$0 (runs locally on a single GPU)
 ```
 
-> **What this story will demonstrate when it lands.** Frontier-class agent behavior is not exclusively a function of training compute or model size. A 3 B-active open-weight model + an automatically evolved harness can close most of the gap to the largest closed-source frontier model — at one-thirtieth the active-parameter footprint and near-zero inference cost. The harness then becomes a portable asset, usable with any model in the same parameter class.
+> **Why this run is worth doing.** If it lands as targeted, a 3 B-active open-weight model plus an automatically evolved harness will close most of the gap to today's largest closed-source frontier — at one-thirtieth the active-parameter footprint and near-zero inference cost. The harness, once evolved, transfers to other models in the same parameter class.
 
 ---
 
