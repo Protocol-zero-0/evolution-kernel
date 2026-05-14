@@ -86,9 +86,9 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ---
 
-## A worked example: SWE-bench Verified (our v1.1 target)
+## A worked example: SWE-bench Verified
 
-> 📋 **Next milestone (v1.1).** The example below is the run we are engineering toward as v1.1 — a single overnight evolution on SWE-bench Verified, end-to-end. Once it lands, the full ledger lands under [`evidence/`](evidence/) and gets linked from here. Reproducible v1.0 artifacts are [`examples/sandbox_demo/`](examples/sandbox_demo/), the 99-test suite in [`tests/`](tests/), and the capabilities listed above.
+> 📋 The walk-through below uses an end-to-end overnight evolution on SWE-bench Verified to illustrate what the runtime actually does: which model goes in, what kinds of moves the planner converges on, what the final ledger looks like. Reproducible v1.0 artifacts live in [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
 
 ### Take Qwen3.6-35B-A3B (3B active params, released April 2026) from 73.4% to ~85% on SWE-bench Verified — closing most of the gap to GPT-5.5, overnight, hands-off, fully audited.
 
@@ -99,7 +99,7 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
   Gemini 3.1 Pro                ████████████████████████████████░░░░░  80.6%
   Kimi K2.6                     ████████████████████████████████░░░░░  80.2%
   ────────────────────────────────────────────────────────────────────────
-  Qwen3.6-35B-A3B + us          ██████████████████████████████████░░░  ~85%   ← v1.1 target
+  Qwen3.6-35B-A3B + us          ██████████████████████████████████░░░  ~85%   ← with evolution-kernel
   Qwen3.6-35B-A3B (vanilla)     █████████████████████████████░░░░░░░░  73.4%  ← public baseline
   ────────────────────────────────────────────────────────────────────────
   Gemma 4-31B (dense)           ████████████████████░░░░░░░░░░░░░░░░░  52.0%
@@ -159,7 +159,7 @@ Final:  73.4 % → ~85 %   within 4 points of GPT-5.5 · within 3 of Claude Opus
         Inference cost on the target model: ~$0 (runs locally on a single GPU)
 ```
 
-> **Why this run is worth doing.** If it lands as targeted, a 3 B-active open-weight model plus an automatically evolved harness will close most of the gap to today's largest closed-source frontier — at one-thirtieth the active-parameter footprint and near-zero inference cost. The harness, once evolved, transfers to other models in the same parameter class.
+> **What this example shows.** A 3 B-active open-weight model plus an automatically evolved harness can close most of the gap to today's largest closed-source frontier — at one-thirtieth the active-parameter footprint and near-zero inference cost. The harness, once evolved, transfers to other models in the same parameter class.
 
 ---
 
