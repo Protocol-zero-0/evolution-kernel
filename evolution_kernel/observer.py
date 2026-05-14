@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -15,6 +17,7 @@ from .config import EvidenceSource
 
 DEFAULT_FILE_LIMIT = 64 * 1024  # 64 KiB
 DEFAULT_SHELL_TIMEOUT = 30  # seconds
+DEFAULT_HTTP_LIMIT = 64 * 1024  # 64 KiB body cap
 
 
 def collect_observation(
@@ -22,6 +25,7 @@ def collect_observation(
     cwd: Path | str,
     file_limit: int = DEFAULT_FILE_LIMIT,
     shell_timeout: int = DEFAULT_SHELL_TIMEOUT,
+    http_limit: int = DEFAULT_HTTP_LIMIT,
 ) -> Mapping[str, Any]:
     """Run each evidence source and return a structured bundle."""
     base = Path(cwd).resolve()
@@ -31,6 +35,8 @@ def collect_observation(
             collected.append(_collect_file(source.path or "", base, file_limit))
         elif source.type == "shell":
             collected.append(_collect_shell(source.command or "", base, shell_timeout))
+        elif source.type == "http":
+            collected.append(_collect_http(source, http_limit))
         else:
             collected.append({"type": source.type, "error": "unknown source type"})
     return {"cwd": str(base), "sources": collected}
@@ -70,6 +76,57 @@ def _collect_file(rel_path: str, cwd: Path, limit: int) -> dict[str, Any]:
         data = data[:limit]
     record["content"] = data.decode("utf-8", errors="replace")
     record["bytes"] = len(data)
+    return record
+
+
+def _collect_http(source: EvidenceSource, limit: int) -> dict[str, Any]:
+    """Fetch one HTTP endpoint into a structured record.
+
+    The observer stays a thin collector: it captures status, headers, and a
+    byte-capped body, plus an ``error`` string on failure. Retries, auth
+    flows, and content parsing belong upstream (planner / role scripts).
+    """
+    url = source.url or ""
+    method = (source.method or "GET").upper()
+    record: dict[str, Any] = {"type": "http", "url": url, "method": method}
+    if not url.strip():
+        record["error"] = "empty url"
+        return record
+    request = urllib.request.Request(url, method=method)
+    for header_name, header_value in source.headers:
+        request.add_header(header_name, header_value)
+    try:
+        with urllib.request.urlopen(request, timeout=source.timeout) as response:
+            status = int(getattr(response, "status", response.getcode() or 0))
+            headers_obj = response.headers
+            body = response.read(limit + 1)
+    except urllib.error.HTTPError as exc:
+        # Non-2xx responses still carry a body — record it like a success
+        # except for the status code so the planner can react to 4xx/5xx.
+        try:
+            body = exc.read(limit + 1)
+        except Exception:
+            body = b""
+        headers_obj = exc.headers
+        status = int(exc.code)
+    except urllib.error.URLError as exc:
+        record["error"] = f"URLError: {exc.reason!r}"
+        return record
+    except (TimeoutError, OSError) as exc:
+        record["error"] = f"{type(exc).__name__}: {exc}"
+        return record
+
+    if len(body) > limit:
+        record["truncated"] = True
+        body = body[:limit]
+    record["status"] = status
+    record["bytes"] = len(body)
+    record["body"] = body.decode("utf-8", errors="replace")
+    # Sort headers so the observation bundle is stable for ledger diffs.
+    record["headers"] = sorted(
+        ((str(k), str(v)) for k, v in headers_obj.items()),
+        key=lambda kv: (kv[0].lower(), kv[1]),
+    )
     return record
 
 

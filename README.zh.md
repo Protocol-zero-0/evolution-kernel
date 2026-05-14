@@ -102,6 +102,8 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## 看它实际运行
 
+> 📋 **示意场景。** 下面的数字描述了"一个完整、目标明确的隔夜跑"是什么样——这是 GSM8K 案例的设计叙事，不是仓库里 checked-in 的真实运行记录。今天就能复现的真实跑，请参考 [`evidence/`](evidence/) 和 [`examples/demo_target`](examples/demo_target)。
+
 ### $34，一晚上，一个能在 MacBook 上跑的 8B 模型——小学数学应用题正确率 96.2%，和 GPT-5.5 基本同档。模型权重一字节未动。
 
 > Qwen3-8B-Instruct 是一个通用模型，没有专门的数学训练。权重全程冻结。Evolution Kernel 只进化 solver harness——提示策略、工具调用和采样逻辑。一个隔夜跑完，同一个模型只落后 GPT-5.5 2.8 个百分点。这意味着每个孩子都能拥有一个免费、本地、随时在线、完全保护隐私的数学辅导老师。
@@ -248,6 +250,7 @@ flowchart LR
 | 目标评估器——当 mission 完成时自动停止 | ✅ |
 | k 路并行探索（FunSearch / AlphaEvolve 模式） | ✅ |
 | 进程级沙箱（firejail）——执行器无法写出 worktree 之外的任何文件 | ✅ |
+| 远程观察者——HTTP 证据源，把线上 dashboard / eval endpoint 拉进 observation.json | ✅ |
 
 ---
 
@@ -266,6 +269,11 @@ evidence_sources:
     command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
   - type: file          # 文件内容写入 observation.json
     path: "metrics.json"
+  - type: http          # GET 一个线上接口；status / headers / body 都进 observation
+    url: "https://evals.example.com/run/latest"
+    headers:
+      Accept: application/json
+    timeout: 10         # 秒（默认 10）
 
 # 只有这些路径下的文件允许被修改
 mutation_scope:
