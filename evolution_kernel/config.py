@@ -20,6 +20,12 @@ Loads and validates a small YAML schema:
         path: "./metrics.json"
       - type: shell
         command: "bash ./scripts/status.sh"
+      - type: http
+        url: "http://localhost:8000/status"
+        method: GET            # optional, default GET
+        headers:               # optional
+          Accept: application/json
+        timeout: 10            # optional seconds, default 10
 
     mutation_scope:
       allowed_paths:
@@ -58,9 +64,14 @@ class ConfigError(ValueError):
 
 @dataclass(frozen=True)
 class EvidenceSource:
-    type: str  # "file" or "shell"
+    type: str  # "file" | "shell" | "http"
     path: str | None = None
     command: str | None = None
+    # HTTP-only fields
+    url: str | None = None
+    method: str = "GET"
+    headers: tuple[tuple[str, str], ...] = ()
+    timeout: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -208,9 +219,56 @@ def _parse_evidence_sources(value: Any) -> Sequence[EvidenceSource]:
                     f"evidence_sources[{index}] type=shell requires a non-empty `command`"
                 )
             sources.append(EvidenceSource(type="shell", command=command.strip()))
+        elif kind == "http":
+            url = item.get("url")
+            if not isinstance(url, str) or not url.strip():
+                raise ConfigError(
+                    f"evidence_sources[{index}] type=http requires a non-empty `url`"
+                )
+            method_raw = item.get("method", "GET")
+            if not isinstance(method_raw, str) or not method_raw.strip():
+                raise ConfigError(
+                    f"evidence_sources[{index}].method must be a non-empty string"
+                )
+            headers_raw = item.get("headers", {})
+            if not isinstance(headers_raw, Mapping):
+                raise ConfigError(
+                    f"evidence_sources[{index}].headers must be a mapping"
+                )
+            headers: list[tuple[str, str]] = []
+            for hk, hv in headers_raw.items():
+                if not isinstance(hk, str) or not hk.strip():
+                    raise ConfigError(
+                        f"evidence_sources[{index}].headers keys must be non-empty strings"
+                    )
+                if not isinstance(hv, (str, int, float)):
+                    raise ConfigError(
+                        f"evidence_sources[{index}].headers[{hk!r}] must be str | int | float"
+                    )
+                headers.append((hk.strip(), str(hv)))
+            timeout_raw = item.get("timeout", 10.0)
+            try:
+                timeout = float(timeout_raw)
+            except (TypeError, ValueError):
+                raise ConfigError(
+                    f"evidence_sources[{index}].timeout must be a number, got {timeout_raw!r}"
+                )
+            if timeout <= 0:
+                raise ConfigError(
+                    f"evidence_sources[{index}].timeout must be > 0"
+                )
+            sources.append(
+                EvidenceSource(
+                    type="http",
+                    url=url.strip(),
+                    method=method_raw.strip().upper(),
+                    headers=tuple(headers),
+                    timeout=timeout,
+                )
+            )
         else:
             raise ConfigError(
-                f"evidence_sources[{index}].type must be 'file' or 'shell', got {kind!r}"
+                f"evidence_sources[{index}].type must be 'file', 'shell', or 'http', got {kind!r}"
             )
     return sources
 

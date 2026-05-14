@@ -102,6 +102,8 @@ evolution-kernel --config evolution.yml --repo /path/to/project --ledger /tmp/le
 
 ## See it in action
 
+> 📋 **Illustrative scenario.** The numbers below describe what a complete, well-targeted overnight run on the GSM8K case looks like — they are a design narrative, not a checked-in artifact in this repo. For runs anyone can reproduce today, see [`evidence/`](evidence/) and [`examples/demo_target`](examples/demo_target).
+
 ### $34. One night. An 8B model that runs on a MacBook — from 51.8% to 96.2% on elementary math. Zero weight changes.
 
 > Qwen3-8B-Instruct is a general-purpose model with no math-specific training. Its weights are frozen throughout. Evolution Kernel evolves only the solver harness — prompt strategies, tools, and sampling logic. After one overnight run, the same model sits 2.8 points behind GPT-5.5. That means every child can have a free, local, always-on, privacy-safe math tutor.
@@ -248,6 +250,7 @@ flowchart LR
 | Goal evaluator — stops when mission is "won" | ✅ |
 | k-branch parallel exploration (FunSearch / AlphaEvolve style) | ✅ |
 | Process sandbox via firejail — executor cannot write outside its worktree | ✅ |
+| Remote observer — HTTP evidence source for live dashboards / eval endpoints | ✅ |
 
 ---
 
@@ -266,6 +269,11 @@ evidence_sources:
     command: "python3 scripts/run_gsm8k.py --model qwen3-8b-instruct --sample 100 --json"
   - type: file          # file contents go into observation.json
     path: "metrics.json"
+  - type: http          # GET a live endpoint; status, headers and body recorded
+    url: "https://evals.example.com/run/latest"
+    headers:
+      Accept: application/json
+    timeout: 10         # seconds (default 10)
 
 # Only files under these paths may be changed
 mutation_scope:
