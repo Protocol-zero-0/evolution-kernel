@@ -1,8 +1,18 @@
 # Evolution Kernel
 
 <p align="center">
-  <strong>Take a 3 B-active open-weight model. Close most of the SWE-bench gap to GPT-5.5 — overnight, hands-off, fully audited.</strong><br>
-  <em>No retraining. No fine-tuning. No weight changes. Only the harness around the model evolves.</em>
+  <strong>A soul plugin for any code.</strong><br>
+  Drop it into any git repository, give it a measurable goal, and the
+  codebase begins to perceive its own environment, judge its own
+  output, and rewrite itself toward the goal — sandboxed, ledgered,
+  every change a real git commit you can roll back.
+</p>
+
+<p align="center">
+  <em>Code on disk does not evolve. But once a codebase can read its own
+  outputs, hold a conversation with its own past, and shed failed
+  experiments without leaving scars — it stops being a body of text and
+  becomes a process.</em>
 </p>
 
 <p align="center">
@@ -76,7 +86,7 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ---
 
-## Our v1.1 target
+## A worked example: SWE-bench Verified (our v1.1 target)
 
 > 📋 **ROADMAP TARGET · NOT A LOGGED RUN.** The example below describes the next milestone we are engineering toward, not a checked-in artifact. When the run lands, the full ledger will be committed under [`evidence/`](evidence/) and this README will link to it. For runs you can reproduce **today**, see [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
 
