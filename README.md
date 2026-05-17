@@ -33,6 +33,41 @@
 
 ---
 
+> ### ▶ Try in 10 minutes
+>
+> ```bash
+> pip install -e . && pip install ruff
+> bash examples/quickstart/setup.sh
+> evolution-kernel \
+>   --config examples/quickstart/evolution.yml \
+>   --repo /tmp/ek-quickstart-target \
+>   --ledger /tmp/ek-quickstart-ledger \
+>   --loop
+> ```
+>
+> Closes the full loop in **~1 second**, **\$0**, **no API key**. See [examples/quickstart/](examples/quickstart/) for what just happened. For the LLM-driven version on a real OSS target, see [examples/oss_fix_demo/](examples/oss_fix_demo/).
+
+### How the loop works
+
+```
+   ┌─ Observe ─┐    ┌─ Plan ─┐    ┌─ Execute ─┐    ┌─ Evaluate ─┐
+   │  metrics  │ →  │  LLM   │ →  │ worktree  │ →  │   re-run   │
+   │ ruff/test │    │ + hist │    │  + agent  │    │   metric   │
+   └─────┬─────┘    └────────┘    └─────┬─────┘    └──────┬─────┘
+         │                              │                  │
+         │            ┌─────────────────┴──────────────────┘
+         │            ▼
+         │     ✅ accept → real git commit on evolution/accepted
+         │     ❌ reject → worktree discarded, experiment branch kept for audit
+         │            │
+         └────────────┴────► ledger: goal · obs · plan · diff · eval · decision · reflection
+                                       (every step replayable, every change rollback-able)
+```
+
+Each pass writes a complete forensic record to `runs/<id>/`. Nothing the kernel decides is held in memory; everything is reconstructable from the ledger alone.
+
+---
+
 ## Motivation
 
 Frontier-class agent behavior is the joint product of *the model* and *the harness that runs it* — prompt structure, tool loop, sampling and best-of-N, verifier, retry policy. Today that harness is hand-tuned by senior engineers at every serious AI lab, and the resulting code is usually the actual ceiling against which the base model is judged.
