@@ -1,0 +1,32 @@
+mission: "Drive ruff to zero violations on src/ — closes the evolution loop in one round, no LLM, no API key."
+
+# No `llm:` block. No `coding_agent:` block. The roles are tiny deterministic
+# Python scripts checked in under target/bots/ — they do the ruff work
+# directly. The whole point is to demo the governor / observer / ledger
+# stack in one terminal command at zero cost.
+
+history:
+  max_entries: 3
+
+evidence_sources:
+  - type: shell
+    command: "python3 -m ruff check src/ || true"   # `|| true` so observer never fails the run
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+hard_stops:
+  max_iterations: 2
+  max_consecutive_failures: 1
+
+roles:
+  planner:
+    - "python3"
+    - "bots/planner.py"
+  executor:
+    - "python3"
+    - "bots/executor.py"
+  evaluator:
+    - "python3"
+    - "bots/evaluator.py"
