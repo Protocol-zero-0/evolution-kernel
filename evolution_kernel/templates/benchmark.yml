@@ -1,0 +1,39 @@
+# Template: benchmark
+# Use when the goal is FunSearch / AlphaEvolve-style population search on a
+# numeric benchmark — k-branch parallel exploration with a `fitness` evaluator.
+# Substituted by `evolution-kernel init`. Edit freely.
+
+mission: "{{mission}}"
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+coding_agent:
+  tool: claude-code
+
+history:
+  max_entries: 20
+
+evidence_sources:
+  - type: shell
+    command: "python3 scripts/benchmark.py"      # must emit JSON with a numeric `score`
+
+mutation_scope:
+  allowed_paths:
+{{allowed_paths_yaml}}
+
+hard_stops:
+  max_iterations: 30
+  max_consecutive_failures: 6
+  max_total_usd: 5.00
+  max_total_tokens: 3000000
+
+parallel:
+  k_branches: 3                   # explore 3 candidates per round; best fitness wins
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]

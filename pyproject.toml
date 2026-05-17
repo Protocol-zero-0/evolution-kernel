@@ -20,3 +20,6 @@ evolution-kernel = "evolution_kernel.cli:main"
 # in a clean environment.
 packages = ["evolution_kernel"]
 
+[tool.setuptools.package-data]
+evolution_kernel = ["templates/*.yml"]
+

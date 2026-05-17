@@ -28,6 +28,10 @@ from .governor import Governor, RoleCommand
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw and raw[0] == "init":
+        from .init_wizard import main as _init_main
+        return _init_main(raw[1:])
     parser = argparse.ArgumentParser(
         prog="evolution-kernel",
         description="Run Evolution Kernel experiments.",
