@@ -1,0 +1,35 @@
+mission: "Drive ruff to zero violations on python-slugify v8.0.4 — real OSS, real edits, real ledger."
+
+# Planner + evaluator are deterministic local Python scripts (no API key
+# needed). The executor is a thin Python wrapper around `claude -p
+# --permission-mode acceptEdits`, billed against your Claude Pro/Max
+# subscription. To swap in Aider or another agent, replace bots/executor.py.
+
+history:
+  max_entries: 5
+
+# Snapshot ruff state at observe-time so the planner sees concrete diagnostics.
+evidence_sources:
+  - type: shell
+    command: "python3 -m ruff check slugify/ || true"
+
+mutation_scope:
+  allowed_paths:
+    - "slugify/"
+
+hard_stops:
+  max_iterations: 3
+  max_consecutive_failures: 2
+  # No max_total_usd / max_total_tokens: this example does not call the
+  # Anthropic API directly. The cost is your Claude subscription's flat fee.
+
+roles:
+  planner:
+    - "python3"
+    - "bots/planner.py"
+  executor:
+    - "python3"
+    - "bots/executor.py"
+  evaluator:
+    - "python3"
+    - "bots/evaluator.py"
