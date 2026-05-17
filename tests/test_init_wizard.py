@@ -2,40 +2,55 @@
 from __future__ import annotations
 
 import io
+import os
+import sys
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-
-import pytest
+from unittest.mock import patch
 
 from evolution_kernel import init_wizard
 from evolution_kernel.config import load_config
 
 
-@pytest.mark.parametrize("idx,name", list(enumerate(init_wizard.TEMPLATES, start=1)))
-def test_each_template_round_trips(tmp_path: Path, monkeypatch, capsys, idx: int, name: str) -> None:
-    monkeypatch.chdir(tmp_path)
-    answers = iter([f"unit test mission for {name}", str(idx), "src/, tests/"])
-    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+class InitWizardTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self._prev_cwd = os.getcwd()
+        os.chdir(self.tmp)
 
-    rc = init_wizard.main([])
+    def tearDown(self) -> None:
+        os.chdir(self._prev_cwd)
+        self._tmp.cleanup()
 
-    assert rc == 0, f"init failed for template {name}: {capsys.readouterr().err}"
-    out = tmp_path / "evolution.yml"
-    assert out.exists()
-    cfg = load_config(str(out))
-    assert cfg.mission.startswith("unit test mission")
-    assert cfg.mutation_scope.allowed_paths == ("src/", "tests/")
+    def _run_with_inputs(self, inputs: list[str]) -> int:
+        it = iter(inputs)
+        with patch("builtins.input", lambda _prompt: next(it)), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return init_wizard.main([])
+
+    def test_each_template_round_trips(self) -> None:
+        for idx, name in enumerate(init_wizard.TEMPLATES, start=1):
+            with self.subTest(template=name):
+                out_path = self.tmp / "evolution.yml"
+                out_path.unlink(missing_ok=True)
+                rc = self._run_with_inputs([f"unit test mission for {name}", str(idx), "src/, tests/"])
+                self.assertEqual(rc, 0, f"init failed for {name}")
+                self.assertTrue(out_path.exists())
+                cfg = load_config(str(out_path))
+                self.assertTrue(cfg.mission.startswith("unit test mission"))
+                self.assertEqual(cfg.mutation_scope.allowed_paths, ("src/", "tests/"))
+
+    def test_refuses_to_overwrite(self) -> None:
+        (self.tmp / "evolution.yml").write_text("placeholder\n")
+        rc = self._run_with_inputs(["x"])
+        self.assertEqual(rc, 2)
+
+    def test_bad_template_pick(self) -> None:
+        rc = self._run_with_inputs(["mission", "99", "src/"])
+        self.assertEqual(rc, 2)
 
 
-def test_refuses_to_overwrite(tmp_path: Path, monkeypatch, capsys) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "evolution.yml").write_text("placeholder\n")
-    monkeypatch.setattr("builtins.input", lambda _prompt: "x")
-    assert init_wizard.main([]) == 2
-    assert "already exists" in capsys.readouterr().err
-
-
-def test_bad_template_pick(tmp_path: Path, monkeypatch, capsys) -> None:
-    monkeypatch.chdir(tmp_path)
-    answers = iter(["mission", "99", "src/"])
-    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
-    assert init_wizard.main([]) == 2
+if __name__ == "__main__":  # pragma: no cover
+    unittest.main()
