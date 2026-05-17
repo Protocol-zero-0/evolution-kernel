@@ -31,6 +31,41 @@
 
 ---
 
+> ### ▶ 10 分钟跑通
+>
+> ```bash
+> pip install -e . && pip install ruff
+> bash examples/quickstart/setup.sh
+> evolution-kernel \
+>   --config examples/quickstart/evolution.yml \
+>   --repo /tmp/ek-quickstart-target \
+>   --ledger /tmp/ek-quickstart-ledger \
+>   --loop
+> ```
+>
+> 整个闭环 **~1 秒** 跑完，**\$0**，**无需 API key**。详见 [examples/quickstart/](examples/quickstart/)。需要 LLM 驱动的真实 OSS 修复案例，见 [examples/oss_fix_demo/](examples/oss_fix_demo/)。
+
+### 闭环工作流
+
+```
+   ┌─ Observe ─┐    ┌─ Plan ─┐    ┌─ Execute ─┐    ┌─ Evaluate ─┐
+   │   指标     │ →  │ LLM +  │ →  │ worktree  │ →  │ 重跑指标   │
+   │ ruff/test │    │ 历史   │    │ + agent   │    │            │
+   └─────┬─────┘    └────────┘    └─────┬─────┘    └──────┬─────┘
+         │                              │                  │
+         │            ┌─────────────────┴──────────────────┘
+         │            ▼
+         │     ✅ accept → evolution/accepted 上的真实 git commit
+         │     ❌ reject → worktree 销毁，实验分支保留供审计
+         │            │
+         └────────────┴────► ledger: goal · obs · plan · diff · eval · decision · reflection
+                                      （每一步可重放，每个变更可回滚）
+```
+
+每一轮都把完整的取证记录写进 `runs/<id>/`。内核不在内存里保留任何决策状态，所有信息都能从 ledger 重建。
+
+---
+
 ## 动机
 
 旗舰级 agent 能力是 *模型* 和 *运行它的 harness* 的联合产出——prompt 结构、工具循环、采样和 best-of-N、验证器、重试策略。今天这套 harness 在每家严肃的 AI 实验室都靠资深工程师手调，最终结果通常就是评判基座模型时实际的能力上限。
