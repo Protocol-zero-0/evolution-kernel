@@ -1,0 +1,35 @@
+# Template: coverage
+# Use when the goal is to raise test coverage on the target package.
+# Substituted by `evolution-kernel init`. Edit freely.
+
+mission: "{{mission}}"
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-6
+  api_key_env: ANTHROPIC_API_KEY
+
+coding_agent:
+  tool: claude-code
+
+history:
+  max_entries: 10
+
+evidence_sources:
+  - type: shell
+    command: "pytest --cov --cov-report=term-missing -q"
+
+mutation_scope:
+  allowed_paths:
+{{allowed_paths_yaml}}
+
+hard_stops:
+  max_iterations: 15
+  max_consecutive_failures: 3
+  max_total_usd: 2.00
+  max_total_tokens: 1000000
+
+roles:
+  planner:   ["python3", "roles/planner.py"]
+  executor:  ["bash",    "roles/executor.sh"]
+  evaluator: ["python3", "roles/evaluator.py"]
