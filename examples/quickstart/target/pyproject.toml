@@ -1,0 +1,10 @@
+# Quickstart target — minimal pyproject so ruff has rules to enforce.
+# Picked rule families:
+#   E / W — pycodestyle errors and warnings (whitespace, comparison style)
+#   F     — pyflakes (unused imports / undefined names)
+#   I     — import sorting (autofixable with --fix)
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
