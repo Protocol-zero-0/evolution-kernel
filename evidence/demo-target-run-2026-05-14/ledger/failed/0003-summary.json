@@ -1,0 +1,7 @@
+{
+  "accepted": false,
+  "baseline_commit": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5",
+  "candidate_commit": null,
+  "reason": "executor produced no repo changes",
+  "rollback_target": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5"
+}

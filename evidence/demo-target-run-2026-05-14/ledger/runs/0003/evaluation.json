@@ -1,0 +1,12 @@
+{
+  "cost_usd": 0.03677175,
+  "fitness": 0.0,
+  "hard_gates_passed": false,
+  "metrics": {
+    "iterations_observed": 0,
+    "score": 0.5
+  },
+  "reason": "No changes were applied, so the score remains at 0.5 and no progress toward passing the metric check has been made.",
+  "recommendation": "reject",
+  "tokens_used": 103
+}

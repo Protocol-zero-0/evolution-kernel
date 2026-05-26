@@ -1,0 +1,8 @@
+diff --git a/src/feature.py b/src/feature.py
+new file mode 100644
+index 0000000..798e60e
+--- /dev/null
++++ b/src/feature.py
+@@ -0,0 +1,2 @@
++def feature() -> str:
++    return 'ok'

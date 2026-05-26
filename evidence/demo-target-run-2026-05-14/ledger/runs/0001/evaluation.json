@@ -1,0 +1,12 @@
+{
+  "cost_usd": 0.036670499999999995,
+  "fitness": 0.01,
+  "hard_gates_passed": true,
+  "metrics": {
+    "iterations_observed": 0,
+    "score": 0.5
+  },
+  "reason": "Adding an empty feature module docstring has no effect on the metrics.json score or evaluator outcome.",
+  "recommendation": "reject",
+  "tokens_used": 77
+}

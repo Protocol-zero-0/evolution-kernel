@@ -1,0 +1,38 @@
+mission: "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints."
+
+# Use the local Claude Code CLI (no API key required, runs against the
+# logged-in user's subscription via `claude -p`).
+llm:
+  provider: claude_cli
+  model: claude-sonnet-4-6
+
+# Same — executor uses `claude -p` instead of aider.
+coding_agent:
+  tool: claude-code
+
+history:
+  max_entries: 10
+
+evidence_sources:
+  - type: file
+    path: "metrics.json"
+  - type: shell
+    command: "bash scripts/status.sh"
+
+mutation_scope:
+  allowed_paths:
+    - "src/"
+
+# Budget guards. max_total_usd is enforced via the real cost reported by
+# `claude -p --output-format json`. $10 is generous; the run should finish
+# well under $1 on the toy demo_target.
+hard_stops:
+  max_iterations: 10
+  max_consecutive_failures: 3
+  max_total_usd: 10.00
+  max_total_tokens: 1000000
+
+roles:
+  planner:   ["python3", "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/planner.py"]
+  executor:  ["bash",    "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/executor.sh"]
+  evaluator: ["python3", "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/evaluator.py"]

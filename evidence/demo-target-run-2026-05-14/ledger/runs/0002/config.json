@@ -1,0 +1,48 @@
+{
+  "coding_agent": {
+    "tool": "claude-code"
+  },
+  "evidence_sources": [
+    {
+      "path": "metrics.json",
+      "type": "file"
+    },
+    {
+      "command": "bash scripts/status.sh",
+      "type": "shell"
+    }
+  ],
+  "hard_stops": {
+    "max_consecutive_failures": 3,
+    "max_iterations": 10,
+    "max_total_tokens": 1000000,
+    "max_total_usd": 10.0
+  },
+  "history": {
+    "max_entries": 10
+  },
+  "llm": {
+    "model": "claude-sonnet-4-6",
+    "provider": "claude_cli"
+  },
+  "mission": "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints.",
+  "mutation_scope": {
+    "allowed_paths": [
+      "src/"
+    ]
+  },
+  "roles": {
+    "evaluator": [
+      "python3",
+      "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/evaluator.py"
+    ],
+    "executor": [
+      "bash",
+      "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/executor.sh"
+    ],
+    "planner": [
+      "python3",
+      "/home/ubuntu/work/protocol-zero/evolution-kernel/roles/planner.py"
+    ]
+  }
+}

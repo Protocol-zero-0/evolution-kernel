@@ -1,0 +1,18 @@
+{
+  "cwd": "/tmp/demo-target",
+  "sources": [
+    {
+      "bytes": 47,
+      "content": "{\n  \"score\": 0.5,\n  \"iterations_observed\": 0\n}\n",
+      "path": "metrics.json",
+      "type": "file"
+    },
+    {
+      "command": "bash scripts/status.sh",
+      "exit": 0,
+      "stderr": "",
+      "stdout": "demo-target: ok\n",
+      "type": "shell"
+    }
+  ]
+}
