@@ -41,6 +41,23 @@ def _call_llm(prompt: str, cfg: dict) -> tuple[str, int, float]:
         tokens = resp.usage.total_tokens
         return resp.choices[0].message.content, tokens, tokens * 3e-6
 
+    if provider == "claude_cli":
+        import subprocess
+        proc = subprocess.run(
+            ["claude", "-p", "--model", model, "--output-format", "json"],
+            input=prompt,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"claude -p failed (exit {proc.returncode}): {proc.stderr[:200]}")
+        data = json.loads(proc.stdout)
+        text = data.get("result", "")
+        usage = data.get("usage", {})
+        tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+        cost = float(data.get("total_cost_usd", 0.0))
+        return text, tokens, cost
+
     raise ValueError(f"unknown llm.provider: {provider!r}")
 
 

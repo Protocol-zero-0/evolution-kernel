@@ -45,6 +45,29 @@ def _call_openai(prompt: str, model: str, api_key_env: str) -> tuple[str, int, f
     return resp.choices[0].message.content, tokens, cost
 
 
+def _call_claude_cli(prompt: str, model: str) -> tuple[str, int, float]:
+    """Call Claude via the local Claude Code CLI (no API key required).
+
+    Uses --output-format json to recover the response text plus real
+    token / cost numbers, so kernel-level cost guards keep working.
+    """
+    import subprocess
+    proc = subprocess.run(
+        ["claude", "-p", "--model", model, "--output-format", "json"],
+        input=prompt,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p failed (exit {proc.returncode}): {proc.stderr[:200]}")
+    data = json.loads(proc.stdout)
+    text = data.get("result", "")
+    usage = data.get("usage", {})
+    tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+    cost = float(data.get("total_cost_usd", 0.0))
+    return text, tokens, cost
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
@@ -104,6 +127,8 @@ Respond with ONLY a JSON object containing:
         text, tokens, cost = _call_anthropic(prompt, model, api_key_env)
     elif provider == "openai":
         text, tokens, cost = _call_openai(prompt, model, api_key_env)
+    elif provider == "claude_cli":
+        text, tokens, cost = _call_claude_cli(prompt, model)
     else:
         print(f"error: unknown llm.provider: {provider!r}", file=sys.stderr)
         sys.exit(1)
