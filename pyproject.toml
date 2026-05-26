@@ -6,9 +6,40 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+    { name = "Protocol Zero", email = "257158451+Protocol-zero-0@users.noreply.github.com" },
+]
+keywords = [
+    "agents",
+    "autonomous",
+    "evolution",
+    "llm",
+    "ai-coding",
+    "runtime",
+    "harness",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Protocol-zero-0/evolution-kernel"
+Repository = "https://github.com/Protocol-zero-0/evolution-kernel"
+Issues = "https://github.com/Protocol-zero-0/evolution-kernel/issues"
+Releases = "https://github.com/Protocol-zero-0/evolution-kernel/releases"
 
 [project.scripts]
 evolution-kernel = "evolution_kernel.cli:main"
