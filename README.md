@@ -294,9 +294,9 @@ sandbox:
   backend: firejail
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]
 EOF
 
 # 3. Run overnight
@@ -367,9 +367,12 @@ sandbox:
   extra_args: []                # appended verbatim before `--`
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  # `bundled:` resolves to evolution_kernel/roles/<filename> inside the installed
+  # wheel — works for both `pip install evolution-kernel` and git-clone setups.
+  # Or replace any entry with your own argv (`["python3", "myplanner.py"]`).
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]
 ```
 
 **Switch to OpenAI:**
@@ -443,7 +446,7 @@ Each role is an executable that receives:
 --worktree <path>    path to the isolated git sandbox checkout
 ```
 
-`roles/planner.py`, `roles/executor.sh`, and `roles/evaluator.py` are the reference implementation. Copy, modify, or replace them entirely — with a shell script, a Docker call, or anything that reads `--input` and writes `--output`.
+The bundled `evolution_kernel/roles/planner.py`, `executor.sh`, and `evaluator.py` are the reference implementation, shipped inside the wheel — reference them in your `evolution.yml` as `bundled:<name>`. Copy, modify, or replace them entirely — with a shell script, a Docker call, or anything that reads `--input` and writes `--output`.
 
 ---
 
@@ -462,12 +465,12 @@ Being honest about where v1.0 is *not* yet.
 ## Project layout
 
 ```
-evolution_kernel/   ~1,900-line runtime  (Governor · Observer · HardStops · Sandbox · Config · CLI · Scope)
-roles/              reference planner, executor, evaluator, goal_evaluator, strategist
-examples/           demo target + sandbox demo + working evolution.yml
-docs/               protocol spec + first-task spec
-tests/              99 unit + acceptance tests · 14 fixture role scripts
-evidence/           checked-in artifacts of runs anyone can reproduce
+evolution_kernel/        ~1,900-line runtime (Governor · Observer · HardStops · Sandbox · Config · CLI · Scope)
+evolution_kernel/roles/  reference planner, executor, evaluator, goal_evaluator, strategist — bundled in wheel, addressable as `bundled:<name>`
+examples/                demo target + sandbox demo + working evolution.yml
+docs/                    protocol spec + first-task spec
+tests/                   99 unit + acceptance tests · 14 fixture role scripts
+evidence/                checked-in artifacts of runs anyone can reproduce
 ```
 
 ---

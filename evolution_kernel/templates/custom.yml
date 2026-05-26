@@ -31,6 +31,6 @@ hard_stops:
   max_total_tokens: 500000
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]

@@ -5,7 +5,7 @@ Reads goal_eval_input.json, calls an LLM to decide whether the overall mission
 is complete, and writes goal_evaluation.json.
 
 LLM provider/model are read from config.json in the same run directory (same
-pattern as roles/planner.py).
+pattern as evolution_kernel/roles/planner.py).
 """
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ llm:
   model: claude-sonnet-4-6
   api_key_env: ANTHROPIC_API_KEY   # name of the env var holding the key
 
-# Coding agent used by roles/executor.sh
+# Coding agent used by bundled:executor.sh
 coding_agent:
   tool: aider                      # aider | claude-code
 
@@ -31,6 +31,6 @@ hard_stops:
   max_total_tokens: 500000         # stop if total tokens reaches 500k
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]

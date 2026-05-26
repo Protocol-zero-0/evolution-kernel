@@ -1,6 +1,6 @@
 """OSS-fix-demo executor: invokes `claude -p` inside the worktree.
 
-The kernel-bundled `roles/executor.sh` claude-code path drops permission
+The kernel-bundled `evolution_kernel/roles/executor.sh` claude-code path drops permission
 flags, so claude refuses to make edits in non-interactive mode. This
 wrapper sets `--permission-mode acceptEdits` so the agent actually edits
 files. The cost is whatever your Claude Pro / Max subscription already

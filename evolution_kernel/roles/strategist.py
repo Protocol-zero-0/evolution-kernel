@@ -5,7 +5,7 @@ Reads strategist_input.json, calls an LLM to produce a high-level strategy
 (current stage, next milestone, taboo directions), and writes strategy.json.
 
 LLM provider/model are read from config.json in the same run directory (same
-pattern as roles/planner.py).
+pattern as evolution_kernel/roles/planner.py).
 """
 from __future__ import annotations
 
