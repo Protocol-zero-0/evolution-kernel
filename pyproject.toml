@@ -1,6 +1,6 @@
 [project]
 name = "evolution-kernel"
-version = "1.1.1"
+version = "1.1.2"
 description = "A minimal autonomous evolution kernel with isolated planner, executor, evaluator roles."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -52,5 +52,5 @@ evolution-kernel = "evolution_kernel.cli:main"
 packages = ["evolution_kernel"]
 
 [tool.setuptools.package-data]
-evolution_kernel = ["templates/*.yml"]
+evolution_kernel = ["templates/*.yml", "roles/*"]
 

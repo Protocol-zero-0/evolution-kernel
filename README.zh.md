@@ -290,9 +290,9 @@ sandbox:
   backend: firejail
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]
 EOF
 
 # 3. 跑一晚上，放着不管
@@ -360,9 +360,12 @@ sandbox:
   extra_args: []                # 追加到 firejail 命令的额外参数（在 `--` 之前）
 
 roles:
-  planner:   ["python3", "roles/planner.py"]
-  executor:  ["bash",    "roles/executor.sh"]
-  evaluator: ["python3", "roles/evaluator.py"]
+  # `bundled:` 自动解析到已安装的 wheel 里 evolution_kernel/roles/<filename>，
+  # `pip install evolution-kernel` 和 git-clone 两种安装方式都能直接跑。
+  # 也可以把任意一项换成你自己的 argv（如 `["python3", "myplanner.py"]`）。
+  planner:   ["python3", "bundled:planner.py"]
+  executor:  ["bash",    "bundled:executor.sh"]
+  evaluator: ["python3", "bundled:evaluator.py"]
 ```
 
 **切换到 OpenAI：**
@@ -436,7 +439,7 @@ python3 -m pytest tests/ -v
 --worktree <path>    隔离 git 沙箱 checkout 的路径
 ```
 
-`roles/planner.py`、`roles/executor.sh`、`roles/evaluator.py` 是参考实现。复制、改写、或者完全替换——shell 脚本、Docker 调用、任何能读 `--input` 写 `--output` 的东西都行。
+bundled 的 `evolution_kernel/roles/planner.py`、`executor.sh`、`evaluator.py` 是参考实现，随 wheel 一起发出去——在 `evolution.yml` 里用 `bundled:<name>` 引用即可。复制、改写、或者完全替换——shell 脚本、Docker 调用、任何能读 `--input` 写 `--output` 的东西都行。
 
 ---
 
@@ -455,12 +458,12 @@ python3 -m pytest tests/ -v
 ## 项目结构
 
 ```
-evolution_kernel/   ~1,900 行 runtime（Governor · Observer · HardStops · Sandbox · Config · CLI · Scope）
-roles/              参考规划器 / 执行器 / 评估器 / 目标评估器 / 策略师
-examples/           demo 目标 + sandbox demo + 可直接运行的 evolution.yml
-docs/               协议规范 + 第一个进化任务规范
-tests/              99 个单元 + 验收测试 · 14 个 fixture 角色脚本
-evidence/           checked-in 的可复现运行 artifact
+evolution_kernel/        ~1,900 行 runtime（Governor · Observer · HardStops · Sandbox · Config · CLI · Scope）
+evolution_kernel/roles/  参考规划器 / 执行器 / 评估器 / 目标评估器 / 策略师 —— 随 wheel 发，用 `bundled:<name>` 引用
+examples/                demo 目标 + sandbox demo + 可直接运行的 evolution.yml
+docs/                    协议规范 + 第一个进化任务规范
+tests/                   99 个单元 + 验收测试 · 14 个 fixture 角色脚本
+evidence/                checked-in 的可复现运行 artifact
 ```
 
 ---

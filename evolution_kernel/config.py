@@ -295,17 +295,24 @@ def _parse_roles(value: Any) -> Roles:
     if not value:
         return Roles()
 
+    from ._bundled import resolve_bundled
+
     def _argv(label: str) -> tuple[str, ...]:
         v = value.get(label)
         if v is None:
             return ()
         if isinstance(v, str):
-            return (v,)
-        if isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
-            return tuple(x.strip() for x in v)
-        raise ConfigError(
-            f"`roles.{label}` must be a string or a list of non-empty strings"
-        )
+            items = (v,)
+        elif isinstance(v, list) and all(isinstance(x, str) and x.strip() for x in v):
+            items = tuple(x.strip() for x in v)
+        else:
+            raise ConfigError(
+                f"`roles.{label}` must be a string or a list of non-empty strings"
+            )
+        try:
+            return tuple(resolve_bundled(x) for x in items)
+        except (FileNotFoundError, ValueError) as e:
+            raise ConfigError(f"`roles.{label}`: {e}") from e
 
     return Roles(
         planner=_argv("planner"),
