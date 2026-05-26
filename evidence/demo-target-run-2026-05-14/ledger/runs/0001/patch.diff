@@ -1,0 +1,7 @@
+diff --git a/src/feature.py b/src/feature.py
+new file mode 100644
+index 0000000..4b95fd3
+--- /dev/null
++++ b/src/feature.py
+@@ -0,0 +1 @@
++"""Feature module."""

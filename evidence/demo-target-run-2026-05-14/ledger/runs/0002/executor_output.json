@@ -1,0 +1,5 @@
+{
+  "changed_files": 1,
+  "tool": "claude-code",
+  "summary": "Write src/feature.py containing a deterministic feature() stub"
+}

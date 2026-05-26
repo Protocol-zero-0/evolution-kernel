@@ -1,0 +1,16 @@
+{
+  "accepted_branch": "evolution/accepted",
+  "allowed_paths": [
+    "src/"
+  ],
+  "baseline_commit": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5",
+  "goal": {
+    "name": "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints.",
+    "objective": "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints."
+  },
+  "history": [],
+  "ledger_dir": "/tmp/ek-ledger",
+  "observation_path": "/tmp/ek-ledger/runs/0001/observation.json",
+  "run_id": "0001",
+  "worktree": "/tmp/ek-ledger/worktrees/0001"
+}

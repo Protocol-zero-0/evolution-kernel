@@ -1,0 +1,12 @@
+{
+  "baseline_commit": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5",
+  "candidate_commit": "42fe32b50d2e83e1f768820dc782f500185d3e78",
+  "goal": {
+    "name": "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints.",
+    "objective": "Improve the demo target so its evaluator passes a simple metric check, under strict reproducibility constraints."
+  },
+  "observation_path": "/tmp/ek-ledger/runs/0001/observation.json",
+  "patch_path": "/tmp/ek-ledger/runs/0001/patch.diff",
+  "run_id": "0001",
+  "worktree": "/tmp/ek-ledger/worktrees/0001"
+}

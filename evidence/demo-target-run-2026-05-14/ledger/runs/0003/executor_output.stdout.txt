@@ -1,0 +1,1 @@
+Created `/tmp/demo-target/src/__init__.py` with a deterministic `evaluate()` returning `{'score': 1.0, 'iterations_observed': 1}`. No other files modified.

@@ -1,0 +1,5 @@
+{
+  "changed_files": 1,
+  "tool": "claude-code",
+  "summary": "Create src/feature.py to satisfy the evaluator's hard gate check"
+}

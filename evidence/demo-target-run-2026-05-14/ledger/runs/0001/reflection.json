@@ -1,0 +1,11 @@
+{
+  "accepted": false,
+  "created_at": "2026-05-14T04:09:34.279681+00:00",
+  "metrics": {
+    "iterations_observed": 0,
+    "score": 0.5
+  },
+  "plan_summary": "Create src/feature.py to satisfy the evaluator's hard gate check",
+  "reason": "hard gates failed or evaluator rejected candidate",
+  "run_id": "0001"
+}

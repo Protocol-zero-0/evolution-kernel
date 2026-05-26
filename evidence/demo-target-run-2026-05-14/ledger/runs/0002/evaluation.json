@@ -1,0 +1,12 @@
+{
+  "cost_usd": 0.037004249999999995,
+  "fitness": 0.1,
+  "hard_gates_passed": true,
+  "metrics": {
+    "iterations_observed": 0,
+    "score": 0.5
+  },
+  "reason": "Adding a stub feature.py with a trivial function does not modify metrics.json or any evaluator logic, so the score remains 0.5 and the metric check will not pass.",
+  "recommendation": "reject",
+  "tokens_used": 96
+}

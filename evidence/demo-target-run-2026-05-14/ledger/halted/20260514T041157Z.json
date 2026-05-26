@@ -1,0 +1,8 @@
+{
+  "consecutive_failures": 3,
+  "halted_at": "20260514T041157Z",
+  "iterations": 3,
+  "reason": "max_consecutive_failures reached (3)",
+  "total_tokens": 276,
+  "total_usd": 0.11044649999999998
+}

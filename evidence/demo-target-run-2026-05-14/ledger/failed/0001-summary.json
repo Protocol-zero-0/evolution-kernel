@@ -1,0 +1,7 @@
+{
+  "accepted": false,
+  "baseline_commit": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5",
+  "candidate_commit": "42fe32b50d2e83e1f768820dc782f500185d3e78",
+  "reason": "hard gates failed or evaluator rejected candidate",
+  "rollback_target": "a05ac1fa38bdb1ded0721326b9dfadfa3e4214b5"
+}
