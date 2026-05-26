@@ -51,7 +51,11 @@ case "$TOOL" in
     aider --message "$PROMPT" --yes --no-pretty --auto-commits=false 2>&1 || true
     ;;
   claude-code)
-    claude -p "$PROMPT" 2>&1 || true
+    # bypassPermissions: governor already isolates each attempt in a temporary
+    # git worktree, and scope.py rejects any change outside allowed_paths.
+    # The kernel is the trust boundary; the inner claude -p session does not
+    # need its own permission prompts.
+    claude -p "$PROMPT" --permission-mode bypassPermissions 2>&1 || true
     ;;
   *)
     echo "error: unknown coding_agent.tool: $TOOL" >&2
