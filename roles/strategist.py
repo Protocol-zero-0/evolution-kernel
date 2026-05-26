@@ -38,6 +38,21 @@ def _call_openai(prompt: str, model: str, api_key_env: str) -> str:
     return resp.choices[0].message.content
 
 
+def _call_claude_cli(prompt: str, model: str) -> str:
+    """Call Claude via the local Claude Code CLI (no API key required)."""
+    import subprocess
+    proc = subprocess.run(
+        ["claude", "-p", "--model", model, "--output-format", "json"],
+        input=prompt,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"claude -p failed (exit {proc.returncode}): {proc.stderr[:200]}")
+    data = json.loads(proc.stdout)
+    return data.get("result", "")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True)
@@ -80,6 +95,8 @@ Respond with ONLY a JSON object:
         text = _call_anthropic(prompt, model, api_key_env)
     elif provider == "openai":
         text = _call_openai(prompt, model, api_key_env)
+    elif provider == "claude_cli":
+        text = _call_claude_cli(prompt, model)
     else:
         print(f"error: unknown llm.provider: {provider!r}", file=sys.stderr)
         sys.exit(1)
