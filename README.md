@@ -478,3 +478,7 @@ evidence/                checked-in artifacts of runs anyone can reproduce
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+Evolution Kernel is a [JouleBeat](https://joulebeat.com/) project — landing page at [evolution-kernel.joulebeat.com](https://evolution-kernel.joulebeat.com/), project brief at [joulebeat.com/projects/evolution-kernel](https://joulebeat.com/projects/evolution-kernel/).
