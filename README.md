@@ -121,11 +121,11 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
 
 ---
 
-## A worked example: SWE-bench Verified
+## A projected walkthrough: SWE-bench Verified
 
-> 📋 The walk-through below uses an end-to-end overnight evolution on SWE-bench Verified to illustrate what the runtime actually does: which model goes in, what kinds of moves the planner converges on, what the final ledger looks like. Reproducible v1.0 artifacts live in [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
+> 📋 The walk-through below sketches an end-to-end overnight evolution on SWE-bench Verified to illustrate what the runtime actually does: which model goes in, what kinds of moves the planner converges on, what the final ledger looks like. **The ~85% figure below is a projected target, not a measured result.** Reproducible v1.0 artifacts live in [`examples/sandbox_demo/`](examples/sandbox_demo/) and the 99-test suite in [`tests/`](tests/).
 
-### Take Qwen3.6-35B-A3B (3B active params, released April 2026) from 73.4% to ~85% on SWE-bench Verified — closing most of the gap to GPT-5.5, overnight, hands-off, fully audited.
+### Target: take Qwen3.6-35B-A3B (3B active params, released April 2026) from 73.4% to ~85% on SWE-bench Verified — closing most of the gap to GPT-5.5, overnight, hands-off, fully audited.
 
 ```
                                   SWE-bench Verified (500 real GitHub bug-fixes · May 2026)
@@ -134,7 +134,7 @@ Every attempt is written to a **ledger**: goal, observation, plan, diff, evaluat
   Gemini 3.1 Pro                ████████████████████████████████░░░░░  80.6%
   Kimi K2.6                     ████████████████████████████████░░░░░  80.2%
   ────────────────────────────────────────────────────────────────────────
-  Qwen3.6-35B-A3B + us          ██████████████████████████████████░░░  ~85%   ← with evolution-kernel
+  Qwen3.6-35B-A3B + us          ██████████████████████████████████░░░  ~85%   ← projected target, not yet measured
   Qwen3.6-35B-A3B (vanilla)     █████████████████████████████░░░░░░░░  73.4%  ← public baseline
   ────────────────────────────────────────────────────────────────────────
   Gemma 4-31B (dense)           ████████████████████░░░░░░░░░░░░░░░░░  52.0%
