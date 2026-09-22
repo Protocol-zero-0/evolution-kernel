@@ -1,0 +1,64 @@
+# 隐私闸 · GitHub 这一侧的第二道(复查,不是拦截)
+#
+# github.com 上没有办法在"收到推送之前"拒绝 —— 那是 GitHub 企业版自建服务器才有的功能。
+# 这个 Action 在推上来**之后**跑:公开仓库在推上来的那一刻已经能被人看到,它收不回来。
+# 它的用处是兜住本地那道闸管不到的推送:别的机器推的、--no-verify 绕过的、网页上直接改的。
+# 失败时 GitHub 会按你的通知设置发邮件。
+#
+# 用法:把本文件放到仓库的 .github/workflows/privacy-gate.yml,然后
+#   gh secret set PRIVACY_TERMS -R <owner>/<repo> < ~/.compound-memory/privacy-terms.txt
+#   gh variable set PRIVACY_MODE -R <owner>/<repo> --body publish     # 可选,默认 strict
+# 词表以加密密文存在 GitHub 上,只在这个 Action 运行时可见,不进仓库、不出现在日志里。
+name: privacy-gate
+on: [push]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: 扫这次推上来的新增内容
+        env:
+          TERMS: ${{ secrets.PRIVACY_TERMS }}
+          MODE: ${{ vars.PRIVACY_MODE }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys
+          terms_txt = os.environ.get('TERMS', '')
+          if not terms_txt.strip():
+              print('::error::没有设置 PRIVACY_TERMS 密文,隐私复查没法跑'); sys.exit(1)
+          mode = os.environ.get('MODE') or 'strict'
+          tier, terms = 'private', []
+          for s in (l.strip() for l in terms_txt.splitlines()):
+              if not s or s.startswith('#'):
+                  continue
+              if s in ('[private]', '[brand]'):
+                  tier = s[1:-1]; continue
+              if mode == 'publish' and tier != 'private':
+                  continue
+              try:
+                  terms.append(re.compile(s))
+              except re.error:
+                  pass
+          before, after = os.environ['BEFORE'], os.environ['AFTER']
+          rng = [after] if set(before) == {'0'} else [f'{before}..{after}']
+          log = subprocess.run(['git', 'log', '-p', '--no-color', '--format=%x00%h %B', *rng],
+                               capture_output=True, text=True, errors='replace').stdout
+          n = 0
+          for line in log.splitlines():
+              if line.startswith(('+++', '---')) or line.startswith('-'):
+                  continue
+              for rx in terms:
+                  if rx.search(line):
+                      n += 1
+                      # 只报位置和第几条规则,不回显命中的原文 —— Action 日志对有读权限的人可见
+                      print(f'::error::第 {n} 处命中(规则 #{terms.index(rx) + 1}),在新增内容里')
+                      break
+          print(f'隐私复查({mode}):词表 {len(terms)} 条,命中 {n} 处')
+          sys.exit(1 if n else 0)
+          PY
