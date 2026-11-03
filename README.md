@@ -47,6 +47,17 @@
 >
 > Closes the full loop in **~1 second**, **\$0**, **no API key**. See [examples/quickstart/](examples/quickstart/) for what just happened. For the LLM-driven version on a real OSS target, see [examples/oss_fix_demo/](examples/oss_fix_demo/).
 
+### Measured, with a null-model control
+
+A self-improving loop will happily optimize the metric instead of the goal. So before any number counts, we rerun the evolved harness with the model replaced by an empty stub.
+
+| Run | Before → after | Same harness, model replaced by empty stub | Verdict |
+|---|:---:|:---:|---|
+| Store-assistant agent (tool calls over a private database) | 0/12 → **12/12** | 0/12 | Real gain: the model does the work |
+| Wordle agent | 15% → 100% | still 100% | Rejected: the loop wrote a classical solver and routed the model out |
+
+The second row is why the check exists. Both runs passed the metric; only one improved the agent. Null-model ablation is now a gate on every result we report.
+
 ### How the loop works
 
 ```
