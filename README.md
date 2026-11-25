@@ -493,3 +493,11 @@ MIT — see [LICENSE](LICENSE).
 ---
 
 Evolution Kernel is a [JouleBeat](https://joulebeat.com/) project — landing page at [evolution-kernel.joulebeat.com](https://evolution-kernel.joulebeat.com/), project brief at [joulebeat.com/projects/evolution-kernel](https://joulebeat.com/projects/evolution-kernel/).
+
+---
+
+### More from Protocol Zero
+
+- **[compound-memory](https://github.com/Protocol-zero-0/compound-memory)** — Cross-session, cross-machine long-term memory for Claude Code and Codex (local-first, zero dependencies).
+- **[gpu-resume-skill](https://github.com/Protocol-zero-0/gpu-resume-skill)** — Checkpoint recovery layer for LLM fine-tuning, evaluation, and batch inference across Spot GPU preemptions on SkyPilot.
+- **[link-rot-scanner](https://github.com/Protocol-zero-0/link-rot-scanner)** — Zero-false-positive dead link auditor for large awesome lists.
